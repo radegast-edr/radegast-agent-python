@@ -25,9 +25,15 @@ def test_create_radegast_process_starts_when_enabled(monkeypatch) -> None:
         radegast = cli.create_radegast_process()
 
     mock_radegast.assert_called_once_with(
-        binary=settings.radegast_binary,
+        binary=settings.rustinel_binary,
         rules_dir=settings.rules_dir,
         alerts_dir=settings.alerts_dir,
     )
     mock_instance.start.assert_called_once()
     assert radegast is mock_instance
+
+
+def test_main_prints_version(capsys) -> None:
+    cli.main(["--version"])
+    captured = capsys.readouterr()
+    assert captured.out.strip() == cli.get_version()

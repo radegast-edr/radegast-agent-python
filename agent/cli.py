@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
 import signal
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 from agent.client import BackendClient
@@ -18,6 +20,25 @@ from agent.tailer import AlertTailer
 logger = logging.getLogger("agent")
 
 POLL_INTERVAL = 2  # seconds between alert tail polls
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Radegast Agent")
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="store_true",
+        help="Show package version and exit",
+    )
+    return parser.parse_args(argv)
+
+
+def get_version() -> str:
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    with pyproject_path.open("rb") as fh:
+        data = tomllib.load(fh)
+    return str(data["project"]["version"])
+
 
 
 def setup_logging() -> None:
@@ -63,7 +84,7 @@ def create_radegast_process() -> RadegastProcess | None:
         return None
 
     radegast = RadegastProcess(
-        binary=settings.radegast_binary,
+        binary=settings.rustinel_binary,
         rules_dir=settings.rules_dir,
         alerts_dir=settings.alerts_dir,
     )
@@ -71,7 +92,12 @@ def create_radegast_process() -> RadegastProcess | None:
     return radegast
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    if args.version:
+        print(get_version())
+        return
+
     setup_logging()
 
     if not settings.device_token:
