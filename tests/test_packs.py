@@ -63,6 +63,104 @@ class TestPackSync:
         assert (rules_dir / "yara" / "threat-intel" / "malware.yar").exists()
         assert (rules_dir / "ioc" / "hashes.txt").exists()
 
+        registry_path = rules_dir / "ioc" / "ioc_packs.json"
+        assert registry_path.exists()
+        registry = json.loads(registry_path.read_text())
+        assert registry == {"hashes.txt": ["threat-intel"]}
+
+    def test_removes_ioc_file_when_pack_is_removed(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_name": "pack1",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            },
+            {
+                "enabled_id": 2,
+                "pack_name": "pack2",
+                "version": "1.0.0",
+                "pack_version_id": 20,
+                "autoupdate": True,
+            },
+        ]
+
+        client.download_pack.side_effect = [
+            make_zip({"ioc/hashes.txt": "abc123;test hash\n"}),
+            make_zip({"ioc/hashes.txt": "def456;other hash\n"}),
+        ]
+
+        syncer.sync()
+        registry_path = rules_dir / "ioc" / "ioc_packs.json"
+        assert registry_path.exists()
+        registry = json.loads(registry_path.read_text())
+        assert registry == {"hashes.txt": ["pack1", "pack2"]}
+        assert (rules_dir / "ioc" / "hashes.txt").exists()
+
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 2,
+                "pack_name": "pack2",
+                "version": "1.0.0",
+                "pack_version_id": 20,
+                "autoupdate": True,
+            }
+        ]
+        syncer.sync()
+
+        registry = json.loads(registry_path.read_text())
+        assert registry == {"hashes.txt": ["pack2"]}
+        assert (rules_dir / "ioc" / "hashes.txt").exists()
+
+        client.get_available_packs.return_value = []
+        syncer.sync()
+
+        assert not (rules_dir / "ioc" / "hashes.txt").exists()
+        assert json.loads(registry_path.read_text()) == {}
+
+    def test_updates_pack_removes_old_ioc_files(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_name": "pack1",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            }
+        ]
+
+        client.download_pack.return_value = make_zip({
+            "ioc/old.txt": "oldhash\n",
+            "ioc/common.txt": "commonhash\n",
+        })
+        syncer.sync()
+
+        assert (rules_dir / "ioc" / "old.txt").exists()
+        assert (rules_dir / "ioc" / "common.txt").exists()
+
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_name": "pack1",
+                "version": "2.0.0",
+                "pack_version_id": 11,
+                "autoupdate": True,
+            }
+        ]
+        client.download_pack.return_value = make_zip({"ioc/common.txt": "newhash\n"})
+        syncer.sync()
+
+        assert not (rules_dir / "ioc" / "old.txt").exists()
+        assert (rules_dir / "ioc" / "common.txt").exists()
+        registry_path = rules_dir / "ioc" / "ioc_packs.json"
+        registry = json.loads(registry_path.read_text())
+        assert registry == {"common.txt": ["pack1"]}
+
     def test_skips_already_installed(self, setup_syncer):
         syncer, client, rules_dir, _ = setup_syncer
 
