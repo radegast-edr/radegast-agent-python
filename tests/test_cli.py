@@ -6,12 +6,12 @@ from agent import cli
 from agent.config import settings
 
 
-def test_default_start_radegast_is_false() -> None:
-    assert settings.start_radegast is False
+def test_default_start_rustinel_is_false() -> None:
+    assert settings.start_rustinel is False
 
 
 def test_create_radegast_process_skips_when_disabled(monkeypatch) -> None:
-    monkeypatch.setattr(cli.settings, "start_radegast", False)
+    monkeypatch.setattr(cli.settings, "start_rustinel", False)
     with patch("agent.cli.RadegastProcess") as mock_radegast:
         radegast = cli.create_radegast_process()
     assert radegast is None
@@ -19,7 +19,7 @@ def test_create_radegast_process_skips_when_disabled(monkeypatch) -> None:
 
 
 def test_create_radegast_process_starts_when_enabled(monkeypatch) -> None:
-    monkeypatch.setattr(cli.settings, "start_radegast", True)
+    monkeypatch.setattr(cli.settings, "start_rustinel", True)
     with patch("agent.cli.RadegastProcess") as mock_radegast:
         mock_instance = mock_radegast.return_value
         radegast = cli.create_radegast_process()

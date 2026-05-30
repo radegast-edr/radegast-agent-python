@@ -76,9 +76,9 @@ def ensure_signing_key(client: BackendClient) -> None:
 
 def create_radegast_process() -> RadegastProcess | None:
     """Create and start radegast when enabled by config."""
-    if not settings.start_radegast:
+    if not settings.start_rustinel:
         logger.info(
-            "START_RADEGAST is disabled; only checking alerts in %s",
+            "START_RUSTINEL is disabled; only checking alerts in %s",
             settings.alerts_dir,
         )
         return None
