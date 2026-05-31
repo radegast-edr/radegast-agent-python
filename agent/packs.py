@@ -167,7 +167,7 @@ class PackSyncer:
             packs.remove(pack_name)
             if not packs:
                 del self._ioc_registry[filename]
-                (self._rules_dir / "ioc" / filename).unlink(missing_ok=True)
+                self._ensure_empty_ioc_file(filename)
 
         self._save_ioc_registry()
 
@@ -179,9 +179,14 @@ class PackSyncer:
             packs.remove(pack_name)
             if not packs:
                 del self._ioc_registry[filename]
-                (self._rules_dir / "ioc" / filename).unlink(missing_ok=True)
+                self._ensure_empty_ioc_file(filename)
 
         self._save_ioc_registry()
+
+    def _ensure_empty_ioc_file(self, filename: str) -> None:
+        target = self._rules_dir / "ioc" / filename
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("")
 
     def _remove_pack_directories(self, pack_name: str) -> None:
         for rule_type in ("sigma", "yara"):

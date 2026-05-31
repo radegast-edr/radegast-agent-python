@@ -118,7 +118,8 @@ class TestPackSync:
         client.get_available_packs.return_value = []
         syncer.sync()
 
-        assert not (rules_dir / "ioc" / "hashes.txt").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").read_text() == ""
         assert json.loads(registry_path.read_text()) == {}
 
     def test_updates_pack_removes_old_ioc_files(self, setup_syncer):
@@ -155,7 +156,8 @@ class TestPackSync:
         client.download_pack.return_value = make_zip({"ioc/common.txt": "newhash\n"})
         syncer.sync()
 
-        assert not (rules_dir / "ioc" / "old.txt").exists()
+        assert (rules_dir / "ioc" / "old.txt").exists()
+        assert (rules_dir / "ioc" / "old.txt").read_text() == ""
         assert (rules_dir / "ioc" / "common.txt").exists()
         registry_path = rules_dir / "ioc" / "ioc_packs.json"
         registry = json.loads(registry_path.read_text())
@@ -243,7 +245,8 @@ class TestPackSync:
         syncer.sync()
 
         assert not (rules_dir / "yara" / "yara-two").exists()
-        assert not (rules_dir / "ioc" / "hashes.txt").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").read_text() == ""
         assert json.loads(registry_path.read_text()) == {}
 
     def test_skips_already_installed(self, setup_syncer):
