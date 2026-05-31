@@ -130,6 +130,54 @@ class TestAlertProcessing:
         assert tailer.poll() == 0
         client.submit_log.assert_not_called()
 
+    def test_skips_duplicate_alert_lines(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+
+        from ssage import SSAGE
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"})
+        duplicate = json.dumps({"rule.name": "Test", "@timestamp": "2026-01-01T12:00:00Z"})
+        (alerts_dir / "alerts.json").write_text(alert + "\n" + duplicate + "\n")
+
+        processed = tailer.poll()
+        assert processed == 1
+        client.submit_log.assert_called_once()
+
+    def test_persists_sent_hashes_across_restart(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+
+        from ssage import SSAGE
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert_line = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"})
+        (alerts_dir / "alerts.json").write_text(alert_line + "\n")
+        tailer.poll()
+
+        # Restart tailer and append the same alert line again
+        tailer2 = AlertTailer(
+            client=client,
+            signing_key=tailer._signing_key,
+            alerts_dir=alerts_dir,
+            alerts_filename="alerts.json",
+            state_dir=tailer._state_dir,
+        )
+        client.submit_log.reset_mock()
+
+        with open(alerts_dir / "alerts.json", "a") as f:
+            f.write(alert_line + "\n")
+
+        assert tailer2.poll() == 0
+        client.submit_log.assert_not_called()
+
     def test_processes_appended_lines(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
 

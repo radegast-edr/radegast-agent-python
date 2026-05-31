@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,12 +38,16 @@ class AlertTailer:
         self._alerts_filename = alerts_filename
         self._state_dir = state_dir
         self._offset_path = state_dir / "tail_offset.json"
+        self._sent_hashes_path = state_dir / "sent_alert_hashes.json"
         self._encryption_keys: list[str] = []
         self._keys_last_fetched: float = 0
         self._current_file: Path | None = None
         self._current_inode: int | None = None
         self._offset: int = 0
+        self._sent_hashes: deque[str] = deque(maxlen=5000)
+        self._sent_hashes_set: set[str] = set()
         self._load_offset()
+        self._load_sent_hashes()
 
     def _load_offset(self) -> None:
         """Restore tail position from disk."""
@@ -62,6 +68,42 @@ class AlertTailer:
             "offset": self._offset,
         }
         self._offset_path.write_text(json.dumps(data))
+
+    def _load_sent_hashes(self) -> None:
+        """Restore recently sent alert hashes from disk."""
+        if self._sent_hashes_path.exists():
+            try:
+                data = json.loads(self._sent_hashes_path.read_text())
+                if isinstance(data, list):
+                    for value in data:
+                        if isinstance(value, str):
+                            self._sent_hashes.append(value)
+                    self._sent_hashes_set = set(self._sent_hashes)
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse sent alert hash state, starting fresh")
+
+    def _save_sent_hashes(self) -> None:
+        """Persist recently sent alert hashes to disk."""
+        self._state_dir.mkdir(parents=True, exist_ok=True)
+        self._sent_hashes_path.write_text(json.dumps(list(self._sent_hashes)))
+
+    def _hash_alert_line(self, line: str) -> str:
+        try:
+            alert = json.loads(line)
+            normalized = json.dumps(alert, sort_keys=True, separators=(",", ":"))
+        except json.JSONDecodeError:
+            normalized = line
+        return hashlib.md5(normalized.encode("utf-8")).hexdigest()
+
+    def _append_sent_hash(self, alert_hash: str) -> None:
+        if alert_hash in self._sent_hashes_set:
+            return
+        if len(self._sent_hashes) == self._sent_hashes.maxlen:
+            oldest = self._sent_hashes[0]
+            self._sent_hashes_set.discard(oldest)
+        self._sent_hashes.append(alert_hash)
+        self._sent_hashes_set.add(alert_hash)
+        self._save_sent_hashes()
 
     def _find_alert_file(self) -> Path | None:
         """Find the current alert file by newest modification time."""
@@ -127,6 +169,7 @@ class AlertTailer:
             return 0
 
         processed = 0
+        initial_offset = self._offset
         with open(alert_file, "r") as f:
             f.seek(self._offset)
             for line in f:
@@ -134,21 +177,28 @@ class AlertTailer:
                 if not line:
                     continue
                 try:
-                    self._process_alert(line)
-                    processed += 1
+                    if self._process_alert(line):
+                        processed += 1
                 except Exception as e:
                     logger.error("Failed to process alert line: %s", e)
 
             self._offset = f.tell()
 
-        if processed:
+        if self._offset != initial_offset:
             self._save_offset()
+
+        if processed:
             logger.info("Forwarded %d alert(s)", processed)
 
         return processed
 
-    def _process_alert(self, line: str) -> None:
-        """Encrypt, sign, and submit a single alert line."""
+    def _process_alert(self, line: str) -> bool:
+        """Encrypt, sign, submit a single alert line and return whether it was sent."""
+        alert_hash = self._hash_alert_line(line)
+        if alert_hash in self._sent_hashes_set:
+            logger.debug("Skipping duplicate alert line")
+            return False
+
         # Parse to extract timestamp
         try:
             alert = json.loads(line)
@@ -172,3 +222,6 @@ class AlertTailer:
             content=encrypted,
             signature=signature,
         )
+
+        self._append_sent_hash(alert_hash)
+        return True
