@@ -10,6 +10,10 @@ import pytest
 from agent.client import BackendClient
 
 
+def make_response(status_code, method="GET", url="http://localhost:8000", **kwargs):
+    return httpx.Response(status_code, request=httpx.Request(method, url), **kwargs)
+
+
 @pytest.fixture
 def client():
     c = BackendClient("http://localhost:8000", "test-device-token")
@@ -20,7 +24,12 @@ def client():
 class TestLogin:
     def test_login_success(self, client):
         with patch.object(client._client, "post") as mock_post:
-            mock_post.return_value = httpx.Response(200, json={"message": "ok"})
+            mock_post.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/auth/device/login",
+                json={"message": "ok"},
+            )
             client.login()
             mock_post.assert_called_once_with(
                 "/auth/device/login",
@@ -29,7 +38,12 @@ class TestLogin:
 
     def test_login_failure(self, client):
         with patch.object(client._client, "post") as mock_post:
-            mock_post.return_value = httpx.Response(401, json={"detail": "Invalid token"})
+            mock_post.return_value = make_response(
+                401,
+                method="POST",
+                url="http://localhost:8000/auth/device/login",
+                json={"detail": "Invalid token"},
+            )
             with pytest.raises(httpx.HTTPStatusError):
                 client.login()
 
@@ -42,8 +56,17 @@ class TestAutoRelogin:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return httpx.Response(401)
-            return httpx.Response(200, json=[])
+                return make_response(
+                    401,
+                    method=method,
+                    url=f"http://localhost:8000{path}",
+                )
+            return make_response(
+                200,
+                method=method,
+                url=f"http://localhost:8000{path}",
+                json=[],
+            )
 
         with patch.object(client._client, "request", side_effect=mock_request):
             with patch.object(client, "login"):
@@ -58,7 +81,12 @@ class TestGetAvailablePacks:
             {"enabled_id": 1, "pack_name": "test-pack", "version": "1.0.0", "pack_version_id": 5, "autoupdate": True}
         ]
         with patch.object(client._client, "request") as mock:
-            mock.return_value = httpx.Response(200, json=packs)
+            mock.return_value = make_response(
+                200,
+                method="GET",
+                url="http://localhost:8000/packs/device/available",
+                json=packs,
+            )
             result = client.get_available_packs()
             assert result == packs
 
@@ -67,7 +95,12 @@ class TestDownloadPack:
     def test_returns_bytes(self, client):
         zip_content = b"PK\x03\x04fake zip content"
         with patch.object(client._client, "request") as mock:
-            mock.return_value = httpx.Response(200, content=zip_content)
+            mock.return_value = make_response(
+                200,
+                method="GET",
+                url="http://localhost:8000/packs/device/download/5",
+                content=zip_content,
+            )
             result = client.download_pack(5)
             assert result == zip_content
 
@@ -76,7 +109,12 @@ class TestSubmitLog:
     def test_submits_correctly(self, client):
         now = datetime.now(timezone.utc)
         with patch.object(client._client, "request") as mock:
-            mock.return_value = httpx.Response(200, json={"id": 1})
+            mock.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/logs/",
+                json={"id": 1},
+            )
             client.submit_log(time=now, content="encrypted", signature="sig123")
             mock.assert_called_once()
             call_kwargs = mock.call_args
@@ -89,7 +127,12 @@ class TestGetEncryptionKeys:
     def test_returns_keys(self, client):
         keys = [{"user_id": 1, "public_key": "age1abc...", "key_type": "regular"}]
         with patch.object(client._client, "request") as mock:
-            mock.return_value = httpx.Response(200, json=keys)
+            mock.return_value = make_response(
+                200,
+                method="GET",
+                url="http://localhost:8000/logs/encryption-keys",
+                json=keys,
+            )
             result = client.get_encryption_keys()
             assert result == keys
 
@@ -97,7 +140,12 @@ class TestGetEncryptionKeys:
 class TestSetSigningKey:
     def test_registers_key(self, client):
         with patch.object(client._client, "request") as mock:
-            mock.return_value = httpx.Response(200, json={"message": "ok"})
+            mock.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/devices/signing-key",
+                json={"message": "ok"},
+            )
             client.set_signing_key("base64pubkey==")
             mock.assert_called_once_with(
                 "POST",

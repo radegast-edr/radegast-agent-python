@@ -61,6 +61,21 @@ class TestAlertFileDetection:
         (alerts_dir / "alerts.json.2026-01-01").write_text("")
         assert tailer.poll() == 0
 
+    def test_chooses_newest_file_by_mtime(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+
+        older = alerts_dir / "alerts.json.2026-01-01"
+        newer = alerts_dir / "alerts.json.2026-02-01"
+        older.write_text("")
+        newer.write_text("")
+
+        # Ensure the newer file has a later modification timestamp.
+        time.sleep(0.01)
+        newer.write_text("")
+
+        assert tailer.poll() == 0
+        assert tailer._current_file == newer
+
 
 class TestAlertProcessing:
     def test_processes_new_lines(self, setup_tailer):
@@ -89,8 +104,7 @@ class TestAlertProcessing:
         # Verify the submission
         call_kwargs = client.submit_log.call_args.kwargs
         assert call_kwargs["signature"] is not None
-        # Content should be AGE-encrypted (starts with age header)
-        assert "age-encryption" in call_kwargs["content"]
+        assert call_kwargs["content"].startswith("-----BEGIN AGE ENCRYPTED FILE-----")
 
         # Decrypt and verify
         decrypted = s.decrypt(call_kwargs["content"])

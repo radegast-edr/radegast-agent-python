@@ -64,16 +64,22 @@ class AlertTailer:
         self._offset_path.write_text(json.dumps(data))
 
     def _find_alert_file(self) -> Path | None:
-        """Find the current alert file (may have date suffix)."""
-        # Check for exact filename first
-        exact = self._alerts_dir / self._alerts_filename
-        if exact.exists():
-            return exact
+        """Find the current alert file by newest modification time."""
+        candidates = []
 
-        # Check for date-suffixed files, return the most recent
+        exact = self._alerts_dir / self._alerts_filename
+        if exact.exists() and exact.is_file():
+            candidates.append(exact)
+
         pattern = f"{self._alerts_filename}.*"
-        candidates = sorted(self._alerts_dir.glob(pattern), reverse=True)
-        return candidates[0] if candidates else None
+        candidates.extend(
+            p for p in self._alerts_dir.glob(pattern) if p.is_file()
+        )
+
+        if not candidates:
+            return None
+
+        return max(candidates, key=lambda path: path.stat().st_mtime)
 
     def _refresh_keys(self) -> None:
         """Fetch encryption keys from the backend if stale."""
