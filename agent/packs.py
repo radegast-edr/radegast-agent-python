@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import shutil
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -91,6 +92,7 @@ class PackSyncer:
             pack_name = self._manifest[vid].get("pack_name")
             if pack_name and pack_name not in active_pack_names:
                 self._remove_pack_ioc_references(pack_name)
+                self._remove_pack_directories(pack_name)
             del self._manifest[vid]
 
         if updated or removed_ids:
@@ -180,3 +182,9 @@ class PackSyncer:
                 (self._rules_dir / "ioc" / filename).unlink(missing_ok=True)
 
         self._save_ioc_registry()
+
+    def _remove_pack_directories(self, pack_name: str) -> None:
+        for rule_type in ("sigma", "yara"):
+            target = self._rules_dir / rule_type / pack_name
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)

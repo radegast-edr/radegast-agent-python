@@ -161,6 +161,91 @@ class TestPackSync:
         registry = json.loads(registry_path.read_text())
         assert registry == {"common.txt": ["pack1"]}
 
+    def test_adds_and_removes_packs_with_yara_and_ioc(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_name": "yara-one",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            },
+            {
+                "enabled_id": 2,
+                "pack_name": "yara-two",
+                "version": "1.0.0",
+                "pack_version_id": 20,
+                "autoupdate": True,
+            },
+            {
+                "enabled_id": 3,
+                "pack_name": "ioc-one",
+                "version": "1.0.0",
+                "pack_version_id": 30,
+                "autoupdate": True,
+            },
+            {
+                "enabled_id": 4,
+                "pack_name": "ioc-two",
+                "version": "1.0.0",
+                "pack_version_id": 40,
+                "autoupdate": True,
+            },
+        ]
+
+        client.download_pack.side_effect = [
+            make_zip({"yara/malware_one.yar": "rule malware_one { condition: true }"}),
+            make_zip({"yara/malware_two.yar": "rule malware_two { condition: true }"}),
+            make_zip({"ioc/hashes.txt": "abc123;hash1\n"}),
+            make_zip({"ioc/hashes.txt": "def456;hash2\n"}),
+        ]
+
+        syncer.sync()
+
+        assert (rules_dir / "yara" / "yara-one" / "malware_one.yar").exists()
+        assert (rules_dir / "yara" / "yara-two" / "malware_two.yar").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").exists()
+
+        registry_path = rules_dir / "ioc" / "ioc_packs.json"
+        registry = json.loads(registry_path.read_text())
+        assert registry == {"hashes.txt": ["ioc-one", "ioc-two"]}
+
+        client.download_pack.reset_mock()
+
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 2,
+                "pack_name": "yara-two",
+                "version": "1.0.0",
+                "pack_version_id": 20,
+                "autoupdate": True,
+            },
+            {
+                "enabled_id": 3,
+                "pack_name": "ioc-one",
+                "version": "1.0.0",
+                "pack_version_id": 30,
+                "autoupdate": True,
+            },
+        ]
+
+        syncer.sync()
+
+        assert not (rules_dir / "yara" / "yara-one").exists()
+        assert (rules_dir / "yara" / "yara-two" / "malware_two.yar").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").exists()
+        assert json.loads(registry_path.read_text()) == {"hashes.txt": ["ioc-one"]}
+        client.download_pack.assert_not_called()
+
+        client.get_available_packs.return_value = []
+        syncer.sync()
+
+        assert not (rules_dir / "yara" / "yara-two").exists()
+        assert not (rules_dir / "ioc" / "hashes.txt").exists()
+        assert json.loads(registry_path.read_text()) == {}
+
     def test_skips_already_installed(self, setup_syncer):
         syncer, client, rules_dir, _ = setup_syncer
 
