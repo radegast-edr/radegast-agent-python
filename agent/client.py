@@ -15,7 +15,11 @@ class BackendClient:
     def __init__(self, base_url: str, device_token: str):
         self._base_url = base_url.rstrip("/")
         self._device_token = device_token
-        self._client = httpx.Client(base_url=self._base_url, timeout=30.0)
+        self._client = httpx.Client(
+            base_url=self._base_url,
+            timeout=30.0,
+            follow_redirects=True,
+        )
 
     def login(self) -> None:
         """Authenticate with the backend using the device token."""

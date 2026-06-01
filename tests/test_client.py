@@ -48,6 +48,15 @@ class TestLogin:
                 client.login()
 
 
+class TestClientConfiguration:
+    def test_enables_redirects_globally(self):
+        c = BackendClient("http://localhost:8000", "test-device-token")
+        try:
+            assert c._client.follow_redirects is True
+        finally:
+            c.close()
+
+
 class TestAutoRelogin:
     def test_relogin_on_401(self, client):
         call_count = 0
