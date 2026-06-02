@@ -346,3 +346,31 @@ class TestManifestPersistence:
         client.download_pack.reset_mock()
         syncer2.sync()
         client.download_pack.assert_not_called()
+
+
+class TestPlaceholdersAndIOC:
+    def test_ensures_placeholders_on_init(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        # Placeholders should be created by __init__
+        assert (rules_dir / "sigma" / "placeholder.yml").exists()
+        assert (rules_dir / "yara" / "placeholder.yar").exists()
+        for filename in ("hashes.txt", "ips.txt", "domains.txt", "paths_regex.txt"):
+            assert (rules_dir / "ioc" / filename).exists()
+
+    def test_ensures_placeholders_on_sync(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        # Delete the placeholder and IoC files
+        (rules_dir / "sigma" / "placeholder.yml").unlink()
+        (rules_dir / "yara" / "placeholder.yar").unlink()
+        (rules_dir / "ioc" / "hashes.txt").unlink()
+
+        # Run sync
+        client.get_available_packs.return_value = []
+        syncer.sync()
+
+        # They should be recreated
+        assert (rules_dir / "sigma" / "placeholder.yml").exists()
+        assert (rules_dir / "yara" / "placeholder.yar").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").exists()

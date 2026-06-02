@@ -13,7 +13,7 @@ from pathlib import Path
 from agent.client import BackendClient
 from agent.config import settings
 from agent.crypto import generate_device_keypair, get_public_key_b64, load_signing_key
-from agent.packs import PackSyncer
+from agent.packs import PackSyncer, ensure_placeholders_and_ioc
 from agent.process import RadegastProcess
 from agent.tailer import AlertTailer
 
@@ -58,6 +58,7 @@ def ensure_directories() -> None:
     (settings.rules_dir / "sigma").mkdir(exist_ok=True)
     (settings.rules_dir / "yara").mkdir(exist_ok=True)
     (settings.rules_dir / "ioc").mkdir(exist_ok=True)
+    ensure_placeholders_and_ioc(settings.rules_dir)
 
 
 def ensure_signing_key(client: BackendClient) -> None:

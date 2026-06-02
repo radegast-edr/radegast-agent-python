@@ -29,6 +29,7 @@ class PackSyncer:
         self._ioc_registry_path = self._rules_dir / "ioc" / "ioc_packs.json"
         self._manifest = self._load_manifest()
         self._ioc_registry = self._load_ioc_registry()
+        ensure_placeholders_and_ioc(self._rules_dir)
 
     def _load_manifest(self) -> dict[str, Any]:
         """Load the local manifest of installed pack versions."""
@@ -97,6 +98,8 @@ class PackSyncer:
 
         if updated or removed_ids:
             self._save_manifest()
+
+        ensure_placeholders_and_ioc(self._rules_dir)
 
         if updated:
             logger.info("Pack sync complete: %d pack(s) updated", updated)
@@ -193,3 +196,48 @@ class PackSyncer:
             target = self._rules_dir / rule_type / pack_name
             if target.exists():
                 shutil.rmtree(target, ignore_errors=True)
+
+
+def ensure_placeholders_and_ioc(rules_dir: Path) -> None:
+    """Ensure placeholder rules and required IoC files exist in the rules directory."""
+    import sys
+    product = "windows" if sys.platform.startswith("win") else "linux"
+
+    sigma_dir = rules_dir / "sigma"
+    sigma_dir.mkdir(parents=True, exist_ok=True)
+    sigma_placeholder = sigma_dir / "placeholder.yml"
+    
+    # Write rule with correct product for the platform and a command that never triggers
+    sigma_placeholder.write_text(
+        "title: Placeholder Rule\n"
+        "id: 00000000-0000-0000-0000-000000000000\n"
+        "status: stable\n"
+        "description: Placeholder to prevent reload failure\n"
+        "logsource:\n"
+        "  category: process_creation\n"
+        f"  product: {product}\n"
+        "detection:\n"
+        "  selection:\n"
+        "    Image: 'placeholder_nonexistent_command_12345_never_trigger'\n"
+        "  condition: selection\n"
+    )
+
+    yara_dir = rules_dir / "yara"
+    yara_dir.mkdir(parents=True, exist_ok=True)
+    yara_placeholder = yara_dir / "placeholder.yar"
+    if not yara_placeholder.exists():
+        yara_placeholder.write_text(
+            "rule PlaceholderRule {\n"
+            "    meta:\n"
+            "        description = \"Placeholder rule to prevent reload failure\"\n"
+            "    condition:\n"
+            "        false\n"
+            "}\n"
+        )
+
+    ioc_dir = rules_dir / "ioc"
+    ioc_dir.mkdir(parents=True, exist_ok=True)
+    for filename in ("hashes.txt", "ips.txt", "domains.txt", "paths_regex.txt"):
+        ioc_file = ioc_dir / filename
+        if not ioc_file.exists():
+            ioc_file.write_text("")
