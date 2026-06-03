@@ -243,3 +243,137 @@ class TestNoEncryptionKeys:
         processed = tailer.poll()
         assert processed == 0
         client.submit_log.assert_not_called()
+
+
+class TestLogSeverity:
+    def test_parses_severity_when_enabled(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._log_severity = True
+
+        from ssage import SSAGE
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "event.kind": "alert",
+            "rule.name": "Test Rule",
+            "severity": "high",
+        }
+        alert_line = json.dumps(alert)
+        (alerts_dir / "alerts.json").write_text(alert_line + "\n")
+
+        processed = tailer.poll()
+        assert processed == 1
+        client.submit_log.assert_called_once()
+
+        call_kwargs = client.submit_log.call_args.kwargs
+        assert call_kwargs["severity"] == "high"
+
+    def test_ignores_severity_when_disabled(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._log_severity = False
+
+        from ssage import SSAGE
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "event.kind": "alert",
+            "rule.name": "Test Rule",
+            "severity": "high",
+        }
+        alert_line = json.dumps(alert)
+        (alerts_dir / "alerts.json").write_text(alert_line + "\n")
+
+        processed = tailer.poll()
+        assert processed == 1
+        client.submit_log.assert_called_once()
+
+        call_kwargs = client.submit_log.call_args.kwargs
+        assert call_kwargs.get("severity") is None
+
+    def test_falls_back_to_event_severity_flat(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._log_severity = True
+
+        from ssage import SSAGE
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        # Case 1: event.severity is 25 (closest to 21 -> "low")
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "event.kind": "alert",
+            "rule.name": "Test Rule",
+            "event.severity": 25,
+        }
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+        assert tailer.poll() == 1
+        client.submit_log.assert_called_once()
+        assert client.submit_log.call_args.kwargs["severity"] == "low"
+
+        # Case 2: event.severity is 80 (closest to 73 -> "high")
+        client.submit_log.reset_mock()
+        alert2 = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "event.kind": "alert",
+            "rule.name": "Test Rule 2",
+            "event.severity": "80",
+        }
+        with open(alerts_dir / "alerts.json", "a") as f:
+            f.write(json.dumps(alert2) + "\n")
+        assert tailer.poll() == 1
+        client.submit_log.assert_called_once()
+        assert client.submit_log.call_args.kwargs["severity"] == "high"
+
+    def test_falls_back_to_event_severity_nested(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._log_severity = True
+
+        from ssage import SSAGE
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "event": {
+                "severity": 99
+            }
+        }
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+        assert tailer.poll() == 1
+        assert client.submit_log.call_args.kwargs["severity"] == "critical"
+
+    def test_severity_takes_precedence_over_event_severity(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._log_severity = True
+
+        from ssage import SSAGE
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "severity": "medium",
+            "event.severity": 99,
+        }
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+        assert tailer.poll() == 1
+        assert client.submit_log.call_args.kwargs["severity"] == "medium"

@@ -141,6 +141,7 @@ def main(argv: list[str] | None = None) -> None:
         alerts_dir=settings.alerts_dir,
         alerts_filename=settings.alerts_filename,
         state_dir=settings.state_dir,
+        log_severity=settings.log_severity,
     )
 
     # Graceful shutdown handler

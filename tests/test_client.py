@@ -131,6 +131,23 @@ class TestSubmitLog:
             assert payload["content"] == "encrypted"
             assert payload["signature"] == "sig123"
 
+    def test_submits_with_severity(self, client):
+        now = datetime.now(timezone.utc)
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/logs/",
+                json={"id": 1},
+            )
+            client.submit_log(time=now, content="encrypted", signature="sig123", severity="critical")
+            mock.assert_called_once()
+            call_kwargs = mock.call_args
+            payload = call_kwargs.kwargs["json"]
+            assert payload["content"] == "encrypted"
+            assert payload["signature"] == "sig123"
+            assert payload["severity"] == "critical"
+
 
 class TestGetEncryptionKeys:
     def test_returns_keys(self, client):

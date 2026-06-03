@@ -20,6 +20,7 @@ Its primary responsibilities are:
 
 - After finishing implementation of a feature, run all tests to see that everything works as expected
 - After implementing a new feature, be sure to add tests
+- After changing `agent/config.py`, make sure to regenerate/update the environment variables table in `README.md`
 
 ## Environment & Commands
 Always use the `uv` toolchain to run commands in this project:

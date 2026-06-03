@@ -38,6 +38,7 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 | `RADEGAST_AGENT_ALERTS_DIR` | `./logs` | Directory containing alert files |
 | `RADEGAST_AGENT_ALERTS_FILENAME` | `alerts.json` | Alert file base name |
 | `RADEGAST_AGENT_START_RUSTINEL` | `false` | If `true`, start the local `rustinel` process; otherwise only tail alerts |
+| `RADEGAST_AGENT_LOG_SEVERITY` | `true` | If `true`, parse the of the alert and send it unencrypted in the request |
 | `RADEGAST_AGENT_SYNC_INTERVAL` | `300` | Seconds between pack sync checks |
 | `RADEGAST_AGENT_SIGNING_KEY_PATH` | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_key` | Path to the device signing keypair |
 | `RADEGAST_AGENT_STATE_DIR` | `./.radegast-agent` | Local state directory for manifests, offsets, and the default signing key location |

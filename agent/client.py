@@ -55,13 +55,21 @@ class BackendClient:
         resp = self._request("GET", "/logs/encryption-keys")
         return resp.json()
 
-    def submit_log(self, time: datetime, content: str, signature: str | None = None) -> None:
+    def submit_log(
+        self,
+        time: datetime,
+        content: str,
+        signature: str | None = None,
+        severity: str | None = None,
+    ) -> None:
         """Submit an encrypted log entry."""
         payload: dict[str, Any] = {
             "time": time.isoformat(),
             "content": content,
             "signature": signature,
         }
+        if severity is not None:
+            payload["severity"] = severity
         self._request("POST", "/logs/", json=payload)
 
     def set_signing_key(self, public_key_b64: str) -> None:

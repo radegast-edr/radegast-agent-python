@@ -31,12 +31,14 @@ class AlertTailer:
         alerts_dir: Path,
         alerts_filename: str,
         state_dir: Path,
+        log_severity: bool = True,
     ):
         self._client = client
         self._signing_key = signing_key
         self._alerts_dir = alerts_dir
         self._alerts_filename = alerts_filename
         self._state_dir = state_dir
+        self._log_severity = log_severity
         self._offset_path = state_dir / "tail_offset.json"
         self._sent_hashes_path = state_dir / "sent_alert_hashes.json"
         self._encryption_keys: list[str] = []
@@ -199,7 +201,8 @@ class AlertTailer:
             logger.debug("Skipping duplicate alert line")
             return False
 
-        # Parse to extract timestamp
+        # Parse to extract timestamp and optional severity
+        severity = None
         try:
             alert = json.loads(line)
             timestamp_str = alert.get("@timestamp")
@@ -207,6 +210,19 @@ class AlertTailer:
                 alert_time = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
             else:
                 alert_time = datetime.now(timezone.utc)
+            if self._log_severity:
+                severity = alert.get("severity")
+                if severity is None:
+                    event_severity = alert.get("event.severity")
+                    if event_severity is None and isinstance(alert.get("event"), dict):
+                        event_severity = alert["event"].get("severity")
+                    if event_severity is not None:
+                        try:
+                            val = float(event_severity)
+                            levels = [(0, "informational"), (21, "low"), (47, "medium"), (73, "high"), (99, "critical")]
+                            severity = min(levels, key=lambda pair: abs(val - pair[0]))[1]
+                        except (ValueError, TypeError):
+                            pass
         except (json.JSONDecodeError, ValueError):
             alert_time = datetime.now(timezone.utc)
 
@@ -221,6 +237,7 @@ class AlertTailer:
             time=alert_time,
             content=encrypted,
             signature=signature,
+            severity=severity,
         )
 
         self._append_sent_hash(alert_hash)

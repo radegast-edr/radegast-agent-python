@@ -15,6 +15,7 @@ class AgentSettings(BaseSettings):
     alerts_dir: Path = Path("./logs")
     alerts_filename: str = "alerts.json"
     start_rustinel: bool = False
+    log_severity: bool = True
 
     sync_interval: int = 300  # seconds between pack sync checks
     signing_key_path: Path | None = None
