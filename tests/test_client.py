@@ -87,7 +87,7 @@ class TestAutoRelogin:
 class TestGetAvailablePacks:
     def test_returns_pack_list(self, client):
         packs = [
-            {"enabled_id": 1, "pack_name": "test-pack", "version": "1.0.0", "pack_version_id": 5, "autoupdate": True}
+            {"enabled_id": 1, "pack_id": "test-pack", "version": "1.0.0", "pack_version_id": 5, "autoupdate": True}
         ]
         with patch.object(client._client, "request") as mock:
             mock.return_value = make_response(

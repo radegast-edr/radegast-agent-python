@@ -38,14 +38,14 @@ class PackSyncer:
             normalized: dict[str, Any] = {}
             for version_id, info in data.items():
                 if isinstance(info, str):
-                    normalized[version_id] = {"pack_name": None, "version": info}
+                    normalized[version_id] = {"pack_id": None, "version": info}
                 elif isinstance(info, dict):
                     normalized[version_id] = {
-                        "pack_name": info.get("pack_name"),
+                        "pack_id": info.get("pack_id") or info.get("pack_name"),
                         "version": info.get("version"),
                     }
                 else:
-                    normalized[version_id] = {"pack_name": None, "version": str(info)}
+                    normalized[version_id] = {"pack_id": None, "version": str(info)}
             return normalized
         return {}
 
@@ -68,32 +68,32 @@ class PackSyncer:
         updated = 0
 
         enabled_ids = set()
-        active_pack_names = set()
+        active_pack_ids = set()
 
         for pack_info in available:
             version_id = str(pack_info["pack_version_id"])
-            pack_name = pack_info["pack_name"]
+            pack_id = pack_info["pack_id"]
             version = pack_info["version"]
             enabled_ids.add(version_id)
-            active_pack_names.add(pack_name)
+            active_pack_ids.add(pack_id)
 
             existing = self._manifest.get(version_id)
-            if existing and existing.get("pack_name") == pack_name and existing.get("version") == version:
+            if existing and existing.get("pack_id") == pack_id and existing.get("version") == version:
                 continue
 
-            logger.info("Downloading pack '%s' version %s", pack_name, version)
+            logger.info("Downloading pack '%s' version %s", pack_id, version)
             zip_data = self._client.download_pack(pack_info["pack_version_id"])
-            new_ioc_files = self._extract_pack(zip_data, pack_name)
-            self._manifest[version_id] = {"pack_name": pack_name, "version": version}
-            self._update_ioc_registry_for_pack(pack_name, new_ioc_files)
+            new_ioc_files = self._extract_pack(zip_data, pack_id)
+            self._manifest[version_id] = {"pack_id": pack_id, "version": version}
+            self._update_ioc_registry_for_pack(pack_id, new_ioc_files)
             updated += 1
 
         removed_ids = set(self._manifest.keys()) - enabled_ids
         for vid in removed_ids:
-            pack_name = self._manifest[vid].get("pack_name")
-            if pack_name and pack_name not in active_pack_names:
-                self._remove_pack_ioc_references(pack_name)
-                self._remove_pack_directories(pack_name)
+            pack_id = self._manifest[vid].get("pack_id")
+            if pack_id and pack_id not in active_pack_ids:
+                self._remove_pack_ioc_references(pack_id)
+                self._remove_pack_directories(pack_id)
             del self._manifest[vid]
 
         if updated or removed_ids:
@@ -108,17 +108,17 @@ class PackSyncer:
 
         return updated
 
-    def _extract_pack(self, zip_data: bytes, pack_name: str) -> set[str]:
+    def _extract_pack(self, zip_data: bytes, pack_id: str) -> set[str]:
         """Extract a pack zip into the rules directory.
 
         Pack zips are expected to contain rule files organized in subdirectories:
-        - sigma/  → extracted to rules/sigma/<pack_name>/
-        - yara/   → extracted to rules/yara/<pack_name>/
+        - sigma/  → extracted to rules/sigma/<pack_id>/
+        - yara/   → extracted to rules/yara/<pack_id>/
         - ioc/    → extracted to rules/ioc/ (merged, not namespaced)
 
         Files at the root or in unrecognized directories are placed under
-        rules/sigma/<pack_name>/ if they have .yml/.yaml extension,
-        rules/yara/<pack_name>/ if .yar/.yara, or rules/ioc/ if .txt.
+        rules/sigma/<pack_id>/ if they have .yml/.yaml extension,
+        rules/yara/<pack_id>/ if .yar/.yara, or rules/ioc/ if .txt.
         """
         new_ioc_files: set[str] = set()
 
@@ -138,18 +138,18 @@ class PackSyncer:
                         target = self._rules_dir / "ioc" / filename
                         new_ioc_files.add(filename)
                     else:
-                        target = self._rules_dir / rule_type / pack_name / Path(*parts[1:])
+                        target = self._rules_dir / rule_type / pack_id / Path(*parts[1:])
                 else:
                     ext = Path(filename).suffix.lower()
                     if ext in (".yml", ".yaml"):
-                        target = self._rules_dir / "sigma" / pack_name / filename
+                        target = self._rules_dir / "sigma" / pack_id / filename
                     elif ext in (".yar", ".yara"):
-                        target = self._rules_dir / "yara" / pack_name / filename
+                        target = self._rules_dir / "yara" / pack_id / filename
                     elif ext == ".txt":
                         target = self._rules_dir / "ioc" / filename
                         new_ioc_files.add(filename)
                     else:
-                        target = self._rules_dir / "sigma" / pack_name / filename
+                        target = self._rules_dir / "sigma" / pack_id / filename
 
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
@@ -157,29 +157,29 @@ class PackSyncer:
 
         return new_ioc_files
 
-    def _update_ioc_registry_for_pack(self, pack_name: str, new_files: set[str]) -> None:
-        current_files = {name for name, packs in self._ioc_registry.items() if pack_name in packs}
+    def _update_ioc_registry_for_pack(self, pack_id: str, new_files: set[str]) -> None:
+        current_files = {name for name, packs in self._ioc_registry.items() if pack_id in packs}
 
         for filename in new_files:
             packs = self._ioc_registry.setdefault(filename, [])
-            if pack_name not in packs:
-                packs.append(pack_name)
+            if pack_id not in packs:
+                packs.append(pack_id)
 
         for filename in current_files - new_files:
             packs = self._ioc_registry[filename]
-            packs.remove(pack_name)
+            packs.remove(pack_id)
             if not packs:
                 del self._ioc_registry[filename]
                 self._ensure_empty_ioc_file(filename)
 
         self._save_ioc_registry()
 
-    def _remove_pack_ioc_references(self, pack_name: str) -> None:
+    def _remove_pack_ioc_references(self, pack_id: str) -> None:
         for filename in list(self._ioc_registry.keys()):
             packs = self._ioc_registry[filename]
-            if pack_name not in packs:
+            if pack_id not in packs:
                 continue
-            packs.remove(pack_name)
+            packs.remove(pack_id)
             if not packs:
                 del self._ioc_registry[filename]
                 self._ensure_empty_ioc_file(filename)
@@ -191,9 +191,9 @@ class PackSyncer:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("")
 
-    def _remove_pack_directories(self, pack_name: str) -> None:
+    def _remove_pack_directories(self, pack_id: str) -> None:
         for rule_type in ("sigma", "yara"):
-            target = self._rules_dir / rule_type / pack_name
+            target = self._rules_dir / rule_type / pack_id
             if target.exists():
                 shutil.rmtree(target, ignore_errors=True)
 

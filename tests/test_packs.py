@@ -41,7 +41,7 @@ class TestPackSync:
         client.get_available_packs.return_value = [
             {
                 "enabled_id": 1,
-                "pack_name": "threat-intel",
+                "pack_id": "threat-intel",
                 "version": "1.0.0",
                 "pack_version_id": 10,
                 "autoupdate": True,
@@ -74,14 +74,14 @@ class TestPackSync:
         client.get_available_packs.return_value = [
             {
                 "enabled_id": 1,
-                "pack_name": "pack1",
+                "pack_id": "pack1",
                 "version": "1.0.0",
                 "pack_version_id": 10,
                 "autoupdate": True,
             },
             {
                 "enabled_id": 2,
-                "pack_name": "pack2",
+                "pack_id": "pack2",
                 "version": "1.0.0",
                 "pack_version_id": 20,
                 "autoupdate": True,
@@ -103,7 +103,7 @@ class TestPackSync:
         client.get_available_packs.return_value = [
             {
                 "enabled_id": 2,
-                "pack_name": "pack2",
+                "pack_id": "pack2",
                 "version": "1.0.0",
                 "pack_version_id": 20,
                 "autoupdate": True,
@@ -128,7 +128,7 @@ class TestPackSync:
         client.get_available_packs.return_value = [
             {
                 "enabled_id": 1,
-                "pack_name": "pack1",
+                "pack_id": "pack1",
                 "version": "1.0.0",
                 "pack_version_id": 10,
                 "autoupdate": True,
@@ -147,7 +147,7 @@ class TestPackSync:
         client.get_available_packs.return_value = [
             {
                 "enabled_id": 1,
-                "pack_name": "pack1",
+                "pack_id": "pack1",
                 "version": "2.0.0",
                 "pack_version_id": 11,
                 "autoupdate": True,
@@ -169,28 +169,28 @@ class TestPackSync:
         client.get_available_packs.return_value = [
             {
                 "enabled_id": 1,
-                "pack_name": "yara-one",
+                "pack_id": "yara-one",
                 "version": "1.0.0",
                 "pack_version_id": 10,
                 "autoupdate": True,
             },
             {
                 "enabled_id": 2,
-                "pack_name": "yara-two",
+                "pack_id": "yara-two",
                 "version": "1.0.0",
                 "pack_version_id": 20,
                 "autoupdate": True,
             },
             {
                 "enabled_id": 3,
-                "pack_name": "ioc-one",
+                "pack_id": "ioc-one",
                 "version": "1.0.0",
                 "pack_version_id": 30,
                 "autoupdate": True,
             },
             {
                 "enabled_id": 4,
-                "pack_name": "ioc-two",
+                "pack_id": "ioc-two",
                 "version": "1.0.0",
                 "pack_version_id": 40,
                 "autoupdate": True,
@@ -219,14 +219,14 @@ class TestPackSync:
         client.get_available_packs.return_value = [
             {
                 "enabled_id": 2,
-                "pack_name": "yara-two",
+                "pack_id": "yara-two",
                 "version": "1.0.0",
                 "pack_version_id": 20,
                 "autoupdate": True,
             },
             {
                 "enabled_id": 3,
-                "pack_name": "ioc-one",
+                "pack_id": "ioc-one",
                 "version": "1.0.0",
                 "pack_version_id": 30,
                 "autoupdate": True,
@@ -255,7 +255,7 @@ class TestPackSync:
         client.get_available_packs.return_value = [
             {
                 "enabled_id": 1,
-                "pack_name": "pack1",
+                "pack_id": "pack1",
                 "version": "1.0.0",
                 "pack_version_id": 10,
                 "autoupdate": True,
@@ -277,14 +277,14 @@ class TestPackSync:
 
         # First version
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_name": "pack1", "version": "1.0.0", "pack_version_id": 10, "autoupdate": True}
+            {"enabled_id": 1, "pack_id": "pack1", "version": "1.0.0", "pack_version_id": 10, "autoupdate": True}
         ]
         client.download_pack.return_value = make_zip({"sigma/old.yml": "old"})
         syncer.sync()
 
         # New version (different pack_version_id)
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_name": "pack1", "version": "2.0.0", "pack_version_id": 11, "autoupdate": True}
+            {"enabled_id": 1, "pack_id": "pack1", "version": "2.0.0", "pack_version_id": 11, "autoupdate": True}
         ]
         client.download_pack.return_value = make_zip({"sigma/new.yml": "new"})
         updated = syncer.sync()
@@ -297,7 +297,7 @@ class TestExtraction:
         syncer, client, rules_dir, _ = setup_syncer
 
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_name": "mixed", "version": "1.0.0", "pack_version_id": 20, "autoupdate": True}
+            {"enabled_id": 1, "pack_id": "mixed", "version": "1.0.0", "pack_version_id": 20, "autoupdate": True}
         ]
 
         # Files at root level without subdirectories
@@ -317,7 +317,7 @@ class TestExtraction:
         syncer, client, rules_dir, _ = setup_syncer
 
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_name": "deep", "version": "1.0.0", "pack_version_id": 30, "autoupdate": True}
+            {"enabled_id": 1, "pack_id": "deep", "version": "1.0.0", "pack_version_id": 30, "autoupdate": True}
         ]
 
         zip_data = make_zip({
@@ -336,7 +336,7 @@ class TestManifestPersistence:
         syncer, client, rules_dir, state_dir = setup_syncer
 
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_name": "pack1", "version": "1.0.0", "pack_version_id": 10, "autoupdate": True}
+            {"enabled_id": 1, "pack_id": "pack1", "version": "1.0.0", "pack_version_id": 10, "autoupdate": True}
         ]
         client.download_pack.return_value = make_zip({"sigma/r.yml": "x"})
         syncer.sync()
