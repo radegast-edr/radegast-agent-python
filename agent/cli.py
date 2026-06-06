@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal
+import subprocess
 import sys
 import time
 import tomllib
 from pathlib import Path
+
+import httpx
 
 from agent.client import BackendClient
 from agent.config import settings
@@ -38,6 +42,67 @@ def get_version() -> str:
     with pyproject_path.open("rb") as fh:
         data = tomllib.load(fh)
     return str(data["project"]["version"])
+
+
+def parse_version(version_str: str) -> tuple[int, ...]:
+    if not version_str:
+        return ()
+    parts = []
+    for part in version_str.split("."):
+        digit_part = "".join(c for c in part if c.isdigit())
+        if not digit_part:
+            raise ValueError(f"No digits found in version part: {part}")
+        parts.append(int(digit_part))
+    return tuple(parts)
+
+
+def is_newer_version(current: str, remote: str) -> bool:
+    try:
+        return parse_version(remote) > parse_version(current)
+    except Exception:
+        return remote != current
+
+
+def check_and_perform_autoupdate() -> bool:
+    """Check if a new version is available on GitHub and try to autoupdate itself.
+
+    Returns:
+        bool: True if updated successfully, False otherwise.
+    """
+    logger.info("Checking for new agent version on GitHub...")
+    try:
+        url = "https://raw.githubusercontent.com/radegast-edr/radegast-agent-python/main/pyproject.toml"
+        resp = httpx.get(url, timeout=15.0)
+        resp.raise_for_status()
+
+        remote_data = tomllib.loads(resp.text)
+        remote_version = str(remote_data["project"]["version"])
+        local_version = get_version()
+
+        logger.info("Local version: %s, Remote version: %s", local_version, remote_version)
+
+        if is_newer_version(local_version, remote_version):
+            logger.info("Newer version %s is available (current: %s). Starting autoupdate...", remote_version, local_version)
+            try:
+                logger.info("Running: uv tool upgrade radegast-agent")
+                subprocess.run(["uv", "tool", "upgrade", "radegast-agent"], check=True)
+                logger.info("Successfully updated agent to version %s", remote_version)
+                return True
+            except Exception as e:
+                logger.error("Failed to run uv tool upgrade: %s. Trying direct tool install upgrade...", e)
+                try:
+                    cmd = ["uv", "tool", "install", "--upgrade", "https://github.com/radegast-edr/radegast-agent-python/archive/refs/heads/main.zip"]
+                    logger.info("Running: %s", " ".join(cmd))
+                    subprocess.run(cmd, check=True)
+                    logger.info("Successfully updated agent to version %s", remote_version)
+                    return True
+                except Exception as ex:
+                    logger.error("Autoupdate failed during uv command execution: %s", ex)
+        else:
+            logger.info("Agent is up to date (version %s)", local_version)
+    except Exception as e:
+        logger.error("Error checking for updates: %s", e)
+    return False
 
 
 
@@ -158,8 +223,13 @@ def main(argv: list[str] | None = None) -> None:
 
     # Main loop
     last_sync = time.time()
-    logger.info("Agent running — polling alerts every %ds, syncing packs every %ds",
-                POLL_INTERVAL, settings.sync_interval)
+    last_autoupdate = time.time()
+    if settings.agent_autoupdate_time is not None:
+        logger.info("Agent running — polling alerts every %ds, syncing packs every %ds, checking autoupdate every %ds",
+                    POLL_INTERVAL, settings.sync_interval, settings.agent_autoupdate_time)
+    else:
+        logger.info("Agent running — polling alerts every %ds, syncing packs every %ds",
+                    POLL_INTERVAL, settings.sync_interval)
 
     try:
         while not shutdown:
@@ -169,14 +239,32 @@ def main(argv: list[str] | None = None) -> None:
             except Exception as e:
                 logger.error("Alert poll error: %s", e)
 
-            # Periodic pack sync
             now = time.time()
+            # Periodic pack sync
             if now - last_sync >= settings.sync_interval:
                 try:
                     syncer.sync()
                 except Exception as e:
                     logger.error("Pack sync error: %s", e)
                 last_sync = now
+
+            # Periodic autoupdate check
+            if (
+                settings.agent_autoupdate_time is not None
+                and now - last_autoupdate >= settings.agent_autoupdate_time
+            ):
+                try:
+                    updated = check_and_perform_autoupdate()
+                    if updated:
+                        logger.info("Agent upgraded. Restarting process...")
+                        if radegast is not None:
+                            logger.info("Stopping radegast process...")
+                            radegast.stop()
+                        client.close()
+                        os.execvp(sys.argv[0], sys.argv)
+                except Exception as e:
+                    logger.error("Autoupdate error: %s", e)
+                last_autoupdate = now
 
             time.sleep(POLL_INTERVAL)
     finally:

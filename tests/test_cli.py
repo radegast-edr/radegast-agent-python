@@ -1,6 +1,6 @@
-"""Tests for the CLI startup behavior."""
+from unittest.mock import MagicMock, patch
 
-from unittest.mock import patch
+import pytest
 
 from agent import cli
 from agent.config import settings
@@ -37,3 +37,118 @@ def test_main_prints_version(capsys) -> None:
     cli.main(["--version"])
     captured = capsys.readouterr()
     assert captured.out.strip() == cli.get_version()
+
+
+def test_parse_version() -> None:
+    assert cli.parse_version("0.1.0") == (0, 1, 0)
+    assert cli.parse_version("1.23.4") == (1, 23, 4)
+    assert cli.parse_version("v2.0.1-alpha") == (2, 0, 1)
+    assert cli.parse_version("1.0") == (1, 0)
+    assert cli.parse_version("") == ()
+
+
+def test_is_newer_version() -> None:
+    assert cli.is_newer_version("0.1.0", "0.2.0") is True
+    assert cli.is_newer_version("0.1.0", "0.1.1") is True
+    assert cli.is_newer_version("0.1.0", "0.1.0") is False
+    assert cli.is_newer_version("0.2.0", "0.1.0") is False
+    # Fallback comparison if parsing fails
+    assert cli.is_newer_version("abc", "def") is True
+    assert cli.is_newer_version("abc", "abc") is False
+
+
+@patch("agent.cli.httpx.get")
+@patch("agent.cli.get_version")
+@patch("agent.cli.subprocess.run")
+def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock_get) -> None:
+    mock_get_version.return_value = "0.1.0"
+
+    mock_response = MagicMock()
+    mock_response.text = '[project]\nversion = "0.1.0"'
+    mock_get.return_value = mock_response
+
+    updated = cli.check_and_perform_autoupdate()
+    assert updated is False
+    mock_run.assert_not_called()
+
+
+@patch("agent.cli.httpx.get")
+@patch("agent.cli.get_version")
+@patch("agent.cli.subprocess.run")
+def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version, mock_get) -> None:
+    mock_get_version.return_value = "0.1.0"
+
+    mock_response = MagicMock()
+    mock_response.text = '[project]\nversion = "0.2.0"'
+    mock_get.return_value = mock_response
+
+    updated = cli.check_and_perform_autoupdate()
+    assert updated is True
+    mock_run.assert_called_once_with(["uv", "tool", "upgrade", "radegast-agent"], check=True)
+
+
+@patch("agent.cli.httpx.get")
+@patch("agent.cli.get_version")
+@patch("agent.cli.subprocess.run")
+def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_version, mock_get) -> None:
+    mock_get_version.return_value = "0.1.0"
+
+    mock_response = MagicMock()
+    mock_response.text = '[project]\nversion = "0.2.0"'
+    mock_get.return_value = mock_response
+
+    import subprocess
+    mock_run.side_effect = [subprocess.CalledProcessError(1, "uv"), None]
+
+    updated = cli.check_and_perform_autoupdate()
+    assert updated is True
+
+    assert mock_run.call_count == 2
+    mock_run.assert_any_call(["uv", "tool", "upgrade", "radegast-agent"], check=True)
+    mock_run.assert_any_call(["uv", "tool", "install", "--upgrade", "https://github.com/radegast-edr/radegast-agent-python/archive/refs/heads/main.zip"], check=True)
+
+
+@patch("agent.cli.httpx.get")
+@patch("agent.cli.get_version")
+@patch("agent.cli.subprocess.run")
+def test_check_and_perform_autoupdate_all_fail(mock_run, mock_get_version, mock_get) -> None:
+    mock_get_version.return_value = "0.1.0"
+
+    mock_response = MagicMock()
+    mock_response.text = '[project]\nversion = "0.2.0"'
+    mock_get.return_value = mock_response
+
+    import subprocess
+    mock_run.side_effect = subprocess.CalledProcessError(1, "uv")
+
+    updated = cli.check_and_perform_autoupdate()
+    assert updated is False
+    assert mock_run.call_count == 2
+
+
+@patch("agent.cli.BackendClient")
+@patch("agent.cli.ensure_signing_key")
+@patch("agent.cli.load_signing_key")
+@patch("agent.cli.PackSyncer")
+@patch("agent.cli.create_radegast_process")
+@patch("agent.cli.AlertTailer")
+@patch("agent.cli.check_and_perform_autoupdate")
+@patch("agent.cli.time.time")
+@patch("agent.cli.os.execvp")
+def test_main_loop_triggers_autoupdate(
+    mock_execvp, mock_time, mock_check_update, mock_tailer, mock_create_proc, mock_syncer, mock_load_key, mock_ensure_key, mock_client, monkeypatch
+) -> None:
+    monkeypatch.setattr(cli.settings, "device_token", "dummy-token")
+    monkeypatch.setattr(cli.settings, "agent_autoupdate_time", 90000)
+    monkeypatch.setattr(cli.settings, "sync_interval", 300)
+
+    mock_time.side_effect = [0.0, 0.0, 0.0, 95000.0, 95000.0] + [95000.0] * 10
+    mock_check_update.return_value = True
+
+    mock_execvp.side_effect = SystemExit(0)
+
+    with pytest.raises(SystemExit):
+        cli.main([])
+
+    mock_check_update.assert_called_once()
+    mock_execvp.assert_called_once()

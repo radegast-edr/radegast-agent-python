@@ -18,6 +18,7 @@ class AgentSettings(BaseSettings):
     log_severity: bool = True
 
     sync_interval: int = 300  # seconds between pack sync checks
+    agent_autoupdate_time: int | None = 90000  # seconds between agent autoupdate checks
     signing_key_path: Path | None = None
     state_dir: Path = Path("./.radegast-agent")
 
