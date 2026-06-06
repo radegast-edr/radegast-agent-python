@@ -30,6 +30,20 @@ class BackendClient:
         resp.raise_for_status()
         logger.info("Authenticated with backend")
 
+    def report_versions(self, agent_version: str, rustinel_version: str | None) -> None:
+        """Report agent and rustinel versions to the backend.
+        
+        This updates the device's version information in the database.
+        The rustinel_version can be None if the binary doesn't exist.
+        """
+        params: dict[str, Any] = {"agent_version": agent_version}
+        if rustinel_version is not None:
+            params["rustinel_version"] = rustinel_version
+        
+        resp = self._request("GET", "/packs/device/available", params=params)
+        resp.raise_for_status()
+        logger.info("Reported versions to backend: agent=%s, rustinel=%s", agent_version, rustinel_version)
+
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Make an authenticated request, re-logging in on 401."""
         resp = self._client.request(method, path, **kwargs)

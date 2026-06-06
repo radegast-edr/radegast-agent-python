@@ -29,20 +29,20 @@ radegast-agent --version
 
 The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 
-| Variable | Default | Description |
-|---|---|---|
-| `RADEGAST_AGENT_BACKEND_URL` | `http://localhost:8000/api/v1` | Backend API URL, including the default `/api/v1` path |
-| `RADEGAST_AGENT_DEVICE_TOKEN` | `` | Device token for authenticating to the backend |
-| `RADEGAST_AGENT_RUSTINEL_BINARY` | `./rustinel` | Local path to the `rustinel` binary |
-| `RADEGAST_AGENT_RULES_DIR` | `./rules` | Base directory for extracted rules |
-| `RADEGAST_AGENT_ALERTS_DIR` | `./logs` | Directory containing alert files |
-| `RADEGAST_AGENT_ALERTS_FILENAME` | `alerts.json` | Alert file base name |
-| `RADEGAST_AGENT_START_RUSTINEL` | `false` | If `true`, start the local `rustinel` process; otherwise only tail alerts |
-| `RADEGAST_AGENT_LOG_SEVERITY` | `true` | If `true`, parse the of the alert and send it unencrypted in the request |
-| `RADEGAST_AGENT_SYNC_INTERVAL` | `300` | Seconds between pack sync checks |
-| `RADEGAST_AGENT_AGENT_AUTOUPDATE_TIME` | `90000` | Seconds between agent autoupdate checks, set to 0 to disable update check |
-| `RADEGAST_AGENT_SIGNING_KEY_PATH` | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_key` | Path to the device signing keypair |
-| `RADEGAST_AGENT_STATE_DIR` | `./.radegast-agent` | Local state directory for manifests, offsets, and the default signing key location |
+| Variable                               | Default                                                     | Description                                                                        |
+|----------------------------------------|-------------------------------------------------------------|------------------------------------------------------------------------------------|
+| `RADEGAST_AGENT_BACKEND_URL`           | `http://localhost:8000/api/v1`                              | Backend API URL, including the default `/api/v1` path                              |
+| `RADEGAST_AGENT_DEVICE_TOKEN`          | ``                                                          | Device token for authenticating to the backend                                     |
+| `RADEGAST_AGENT_RUSTINEL_BINARY`       | `./rustinel`                                                | Local path to the `rustinel` binary                                                |
+| `RADEGAST_AGENT_RULES_DIR`             | `./rules`                                                   | Base directory for extracted rules                                                 |
+| `RADEGAST_AGENT_ALERTS_DIR`            | `./logs`                                                    | Directory containing alert files                                                   |
+| `RADEGAST_AGENT_ALERTS_FILENAME`       | `alerts.json`                                               | Alert file base name                                                               |
+| `RADEGAST_AGENT_START_RUSTINEL`        | `false`                                                     | If `true`, start the local `rustinel` process; otherwise only tail alerts          |
+| `RADEGAST_AGENT_LOG_SEVERITY`          | `true`                                                      | If `true`, parse the of the alert and send it unencrypted in the request           |
+| `RADEGAST_AGENT_SYNC_INTERVAL`         | `300`                                                       | Seconds between pack sync checks                                                   |
+| `RADEGAST_AGENT_AGENT_AUTOUPDATE_TIME` | `90000`                                                     | Seconds between agent autoupdate checks, set to 0 to disable update check          |
+| `RADEGAST_AGENT_SIGNING_KEY_PATH`      | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_key` | Path to the device signing keypair                                                 |
+| `RADEGAST_AGENT_STATE_DIR`             | `./.radegast-agent`                                         | Local state directory for manifests, offsets, and the default signing key location |
 
 ### Notes
 
@@ -77,8 +77,10 @@ python -m agent.cli
   - `config.py` — environment-backed config schema
   - `client.py` — backend API client
   - `packs.py` — pack synchronization and extraction
-  - `process.py` — subprocess management for `radegast`
+  - `process.py` — subprocess management for `rustinel`
   - `tailer.py` — alert file tailing and forwarding
+  - `version.py` — version reporting and detection utilities
+  - `autoupdate.py` — agent autoupdate functionality
 - `tests/` — unit tests
 - `pyproject.toml` — package metadata and build config
 

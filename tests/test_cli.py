@@ -1,8 +1,10 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from agent import cli
+from agent.autoupdate import check_and_perform_autoupdate, get_version, is_newer_version, parse_version
 from agent.config import settings
 
 
@@ -10,56 +12,29 @@ def test_default_start_rustinel_is_false() -> None:
     assert settings.start_rustinel is False
 
 
-def test_create_radegast_process_skips_when_disabled(monkeypatch) -> None:
-    monkeypatch.setattr(cli.settings, "start_rustinel", False)
-    with patch("agent.cli.RadegastProcess") as mock_radegast:
-        radegast = cli.create_radegast_process()
-    assert radegast is None
-    mock_radegast.assert_not_called()
+class TestParseVersion:
+    def test_parse_version(self) -> None:
+        assert parse_version("0.1.0") == (0, 1, 0)
+        assert parse_version("1.23.4") == (1, 23, 4)
+        assert parse_version("v2.0.1-alpha") == (2, 0, 1)
+        assert parse_version("1.0") == (1, 0)
+        assert parse_version("") == ()
 
 
-def test_create_radegast_process_starts_when_enabled(monkeypatch) -> None:
-    monkeypatch.setattr(cli.settings, "start_rustinel", True)
-    with patch("agent.cli.RadegastProcess") as mock_radegast:
-        mock_instance = mock_radegast.return_value
-        radegast = cli.create_radegast_process()
-
-    mock_radegast.assert_called_once_with(
-        binary=settings.rustinel_binary,
-        rules_dir=settings.rules_dir,
-        alerts_dir=settings.alerts_dir,
-    )
-    mock_instance.start.assert_called_once()
-    assert radegast is mock_instance
+class TestIsNewerVersion:
+    def test_is_newer_version(self) -> None:
+        assert is_newer_version("0.1.0", "0.2.0") is True
+        assert is_newer_version("0.1.0", "0.1.1") is True
+        assert is_newer_version("0.1.0", "0.1.0") is False
+        assert is_newer_version("0.2.0", "0.1.0") is False
+        # Fallback comparison if parsing fails
+        assert is_newer_version("abc", "def") is True
+        assert is_newer_version("abc", "abc") is False
 
 
-def test_main_prints_version(capsys) -> None:
-    cli.main(["--version"])
-    captured = capsys.readouterr()
-    assert captured.out.strip() == cli.get_version()
-
-
-def test_parse_version() -> None:
-    assert cli.parse_version("0.1.0") == (0, 1, 0)
-    assert cli.parse_version("1.23.4") == (1, 23, 4)
-    assert cli.parse_version("v2.0.1-alpha") == (2, 0, 1)
-    assert cli.parse_version("1.0") == (1, 0)
-    assert cli.parse_version("") == ()
-
-
-def test_is_newer_version() -> None:
-    assert cli.is_newer_version("0.1.0", "0.2.0") is True
-    assert cli.is_newer_version("0.1.0", "0.1.1") is True
-    assert cli.is_newer_version("0.1.0", "0.1.0") is False
-    assert cli.is_newer_version("0.2.0", "0.1.0") is False
-    # Fallback comparison if parsing fails
-    assert cli.is_newer_version("abc", "def") is True
-    assert cli.is_newer_version("abc", "abc") is False
-
-
-@patch("agent.cli.httpx.get")
-@patch("agent.cli.get_version")
-@patch("agent.cli.subprocess.run")
+@patch("agent.autoupdate.httpx.get")
+@patch("agent.autoupdate.get_version")
+@patch("agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
 
@@ -67,14 +42,14 @@ def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock
     mock_response.text = '[project]\nversion = "0.1.0"'
     mock_get.return_value = mock_response
 
-    updated = cli.check_and_perform_autoupdate()
+    updated = check_and_perform_autoupdate()
     assert updated is False
     mock_run.assert_not_called()
 
 
-@patch("agent.cli.httpx.get")
-@patch("agent.cli.get_version")
-@patch("agent.cli.subprocess.run")
+@patch("agent.autoupdate.httpx.get")
+@patch("agent.autoupdate.get_version")
+@patch("agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
 
@@ -82,14 +57,14 @@ def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version
     mock_response.text = '[project]\nversion = "0.2.0"'
     mock_get.return_value = mock_response
 
-    updated = cli.check_and_perform_autoupdate()
+    updated = check_and_perform_autoupdate()
     assert updated is True
     mock_run.assert_called_once_with(["uv", "tool", "upgrade", "radegast-agent"], check=True)
 
 
-@patch("agent.cli.httpx.get")
-@patch("agent.cli.get_version")
-@patch("agent.cli.subprocess.run")
+@patch("agent.autoupdate.httpx.get")
+@patch("agent.autoupdate.get_version")
+@patch("agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
 
@@ -100,7 +75,7 @@ def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_versio
     import subprocess
     mock_run.side_effect = [subprocess.CalledProcessError(1, "uv"), None]
 
-    updated = cli.check_and_perform_autoupdate()
+    updated = check_and_perform_autoupdate()
     assert updated is True
 
     assert mock_run.call_count == 2
@@ -108,9 +83,9 @@ def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_versio
     mock_run.assert_any_call(["uv", "tool", "install", "--upgrade", "https://github.com/radegast-edr/radegast-agent-python/archive/refs/heads/main.zip"], check=True)
 
 
-@patch("agent.cli.httpx.get")
-@patch("agent.cli.get_version")
-@patch("agent.cli.subprocess.run")
+@patch("agent.autoupdate.httpx.get")
+@patch("agent.autoupdate.get_version")
+@patch("agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_all_fail(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
 
@@ -121,9 +96,38 @@ def test_check_and_perform_autoupdate_all_fail(mock_run, mock_get_version, mock_
     import subprocess
     mock_run.side_effect = subprocess.CalledProcessError(1, "uv")
 
-    updated = cli.check_and_perform_autoupdate()
+    updated = check_and_perform_autoupdate()
     assert updated is False
     assert mock_run.call_count == 2
+
+
+class TestCreateRadegastProcess:
+    def test_skips_when_disabled(self, monkeypatch) -> None:
+        monkeypatch.setattr(cli.settings, "start_rustinel", False)
+        with patch("agent.cli.RadegastProcess") as mock_radegast:
+            radegast = cli.create_radegast_process()
+        assert radegast is None
+        mock_radegast.assert_not_called()
+
+    def test_starts_when_enabled(self, monkeypatch) -> None:
+        monkeypatch.setattr(cli.settings, "start_rustinel", True)
+        with patch("agent.cli.RadegastProcess") as mock_radegast:
+            mock_instance = mock_radegast.return_value
+            radegast = cli.create_radegast_process()
+
+        mock_radegast.assert_called_once_with(
+            binary=settings.rustinel_binary,
+            rules_dir=settings.rules_dir,
+            alerts_dir=settings.alerts_dir,
+        )
+        mock_instance.start.assert_called_once()
+        assert radegast is mock_instance
+
+
+def test_main_prints_version(capsys) -> None:
+    cli.main(["--version"])
+    captured = capsys.readouterr()
+    assert captured.out.strip() == cli.get_version()
 
 
 @patch("agent.cli.BackendClient")

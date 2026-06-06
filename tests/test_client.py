@@ -178,3 +178,46 @@ class TestSetSigningKey:
                 "/devices/signing-key",
                 json={"signature_public_key": "base64pubkey=="},
             )
+
+
+class TestReportVersions:
+    def test_reports_both_versions(self, client):
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="GET",
+                url="http://localhost:8000/packs/device/available?agent_version=1.0.0&rustinel_version=0.5.0",
+                json=[],
+            )
+            client.report_versions("1.0.0", "0.5.0")
+            mock.assert_called_once_with(
+                "GET",
+                "/packs/device/available",
+                params={"agent_version": "1.0.0", "rustinel_version": "0.5.0"},
+            )
+
+    def test_reports_agent_version_only(self, client):
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="GET",
+                url="http://localhost:8000/packs/device/available?agent_version=1.0.0",
+                json=[],
+            )
+            client.report_versions("1.0.0", None)
+            mock.assert_called_once_with(
+                "GET",
+                "/packs/device/available",
+                params={"agent_version": "1.0.0"},
+            )
+
+    def test_handles_error(self, client):
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                404,
+                method="GET",
+                url="http://localhost:8000/packs/device/available",
+                json={"detail": "Not found"},
+            )
+            with pytest.raises(httpx.HTTPStatusError):
+                client.report_versions("1.0.0", "0.5.0")
