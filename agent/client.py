@@ -36,7 +36,7 @@ class BackendClient:
         This updates the device's version information in the database.
         The rustinel_version can be None if the binary doesn't exist.
         """
-        params: dict[str, Any] = {"agent_version": agent_version}
+        params: dict[str, Any] = {"agent_version": f"python {agent_version}"}
         if rustinel_version is not None:
             params["rustinel_version"] = rustinel_version
         

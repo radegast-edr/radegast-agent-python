@@ -193,7 +193,7 @@ class TestReportVersions:
             mock.assert_called_once_with(
                 "GET",
                 "/packs/device/available",
-                params={"agent_version": "1.0.0", "rustinel_version": "0.5.0"},
+                params={"agent_version": "python 1.0.0", "rustinel_version": "0.5.0"},
             )
 
     def test_reports_agent_version_only(self, client):
@@ -208,7 +208,7 @@ class TestReportVersions:
             mock.assert_called_once_with(
                 "GET",
                 "/packs/device/available",
-                params={"agent_version": "1.0.0"},
+                params={"agent_version": "python 1.0.0"},
             )
 
     def test_handles_error(self, client):

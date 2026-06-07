@@ -1,6 +1,6 @@
 [project]
 name = "radegast-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Agent wrapper for radegast EDR — syncs detection packs and forwards encrypted alerts"
 requires-python = ">=3.11"
 dependencies = [
