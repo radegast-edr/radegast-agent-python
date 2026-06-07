@@ -3,7 +3,7 @@
 import tempfile
 from pathlib import Path
 
-from agent.crypto import (
+from radegast_edr_agent.crypto import (
     encrypt_for_recipients,
     generate_device_keypair,
     get_public_key_b64,

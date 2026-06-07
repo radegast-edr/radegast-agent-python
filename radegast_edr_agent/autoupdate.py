@@ -8,7 +8,7 @@ import tomllib
 
 import httpx
 
-from agent.version import get_agent_version
+from radegast_edr_agent.version import get_agent_version
 
 logger = logging.getLogger(__name__)
 

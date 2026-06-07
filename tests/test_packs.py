@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agent.packs import PackSyncer
+from radegast_edr_agent.packs import PackSyncer
 
 
 def make_zip(files: dict[str, str]) -> bytes:
@@ -322,13 +322,13 @@ class TestExtraction:
 
         zip_data = make_zip({
             "sigma/windows/process_creation/mimikatz.yml": "title: Mimikatz\n",
-            "yara/malware/trojan/agent.yar": "rule agent {}",
+            "yara/malware/trojan/radegast_edr_agent.yar": "rule agent {}",
         })
         client.download_pack.return_value = zip_data
 
         syncer.sync()
         assert (rules_dir / "sigma" / "deep" / "windows" / "process_creation" / "mimikatz.yml").exists()
-        assert (rules_dir / "yara" / "deep" / "malware" / "trojan" / "agent.yar").exists()
+        assert (rules_dir / "yara" / "deep" / "malware" / "trojan" / "radegast_edr_agent.yar").exists()
 
 
 class TestManifestPersistence:

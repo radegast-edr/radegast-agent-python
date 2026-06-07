@@ -22,7 +22,7 @@ You can also install this project as a UV tool directly from GitHub:
 ```bash
 uv tool install git+https://github.com/radegast-edr/radegast-agent-python
 
-radegast-agent --version
+radegast-edr-agent --version
 ```
 
 ## Configuration
@@ -55,24 +55,24 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 Run the agent via the console script:
 
 ```bash
-radegast-agent
+radegast-edr-agent
 ```
 
 Print the installed version:
 
 ```bash
-radegast-agent --version
+radegast-edr-agent --version
 ```
 
 Or with Python directly:
 
 ```bash
-python -m agent.cli
+python -m radegast_edr_agent.cli
 ```
 
 ## Project layout
 
-- `agent/` — application package
+- `radegast_edr_agent/` — application package
   - `cli.py` — main entry point
   - `config.py` — environment-backed config schema
   - `client.py` — backend API client

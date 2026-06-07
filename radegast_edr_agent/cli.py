@@ -9,14 +9,14 @@ import signal
 import sys
 import time
 
-from agent.autoupdate import check_and_perform_autoupdate
-from agent.client import BackendClient
-from agent.config import settings
-from agent.crypto import generate_device_keypair, get_public_key_b64, load_signing_key
-from agent.packs import PackSyncer, ensure_placeholders_and_ioc
-from agent.process import RadegastProcess
-from agent.tailer import AlertTailer
-from agent.version import get_agent_version, get_rustinel_version, report_versions_to_backend
+from radegast_edr_agent.autoupdate import check_and_perform_autoupdate
+from radegast_edr_agent.client import BackendClient
+from radegast_edr_agent.config import settings
+from radegast_edr_agent.crypto import generate_device_keypair, get_public_key_b64, load_signing_key
+from radegast_edr_agent.packs import PackSyncer, ensure_placeholders_and_ioc
+from radegast_edr_agent.process import RadegastProcess
+from radegast_edr_agent.tailer import AlertTailer
+from radegast_edr_agent.version import get_agent_version, get_rustinel_version, report_versions_to_backend
 
 logger = logging.getLogger("agent")
 

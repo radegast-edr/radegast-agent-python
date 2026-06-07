@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from agent.client import BackendClient
+from radegast_edr_agent.client import BackendClient
 
 logger = logging.getLogger(__name__)
 

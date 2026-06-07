@@ -13,8 +13,8 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from agent.client import BackendClient
-from agent.crypto import encrypt_for_recipients, sign_message
+from radegast_edr_agent.client import BackendClient
+from radegast_edr_agent.crypto import encrypt_for_recipients, sign_message
 
 logger = logging.getLogger(__name__)
 

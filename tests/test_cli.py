@@ -1,11 +1,10 @@
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent import cli
-from agent.autoupdate import check_and_perform_autoupdate, get_version, is_newer_version, parse_version
-from agent.config import settings
+from radegast_edr_agent import cli
+from radegast_edr_agent.autoupdate import check_and_perform_autoupdate, is_newer_version, parse_version
+from radegast_edr_agent.config import settings
 
 
 def test_default_start_rustinel_is_false() -> None:
@@ -32,9 +31,9 @@ class TestIsNewerVersion:
         assert is_newer_version("abc", "abc") is False
 
 
-@patch("agent.autoupdate.httpx.get")
-@patch("agent.autoupdate.get_version")
-@patch("agent.autoupdate.subprocess.run")
+@patch("radegast_edr_agent.autoupdate.httpx.get")
+@patch("radegast_edr_agent.autoupdate.get_version")
+@patch("radegast_edr_agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
 
@@ -47,9 +46,9 @@ def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock
     mock_run.assert_not_called()
 
 
-@patch("agent.autoupdate.httpx.get")
-@patch("agent.autoupdate.get_version")
-@patch("agent.autoupdate.subprocess.run")
+@patch("radegast_edr_agent.autoupdate.httpx.get")
+@patch("radegast_edr_agent.autoupdate.get_version")
+@patch("radegast_edr_agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
 
@@ -62,9 +61,9 @@ def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version
     mock_run.assert_called_once_with(["uv", "tool", "upgrade", "radegast-agent"], check=True)
 
 
-@patch("agent.autoupdate.httpx.get")
-@patch("agent.autoupdate.get_version")
-@patch("agent.autoupdate.subprocess.run")
+@patch("radegast_edr_agent.autoupdate.httpx.get")
+@patch("radegast_edr_agent.autoupdate.get_version")
+@patch("radegast_edr_agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
 
@@ -83,9 +82,9 @@ def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_versio
     mock_run.assert_any_call(["uv", "tool", "install", "--upgrade", "https://github.com/radegast-edr/radegast-agent-python/archive/refs/heads/main.zip"], check=True)
 
 
-@patch("agent.autoupdate.httpx.get")
-@patch("agent.autoupdate.get_version")
-@patch("agent.autoupdate.subprocess.run")
+@patch("radegast_edr_agent.autoupdate.httpx.get")
+@patch("radegast_edr_agent.autoupdate.get_version")
+@patch("radegast_edr_agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_all_fail(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
 
@@ -104,14 +103,14 @@ def test_check_and_perform_autoupdate_all_fail(mock_run, mock_get_version, mock_
 class TestCreateRadegastProcess:
     def test_skips_when_disabled(self, monkeypatch) -> None:
         monkeypatch.setattr(cli.settings, "start_rustinel", False)
-        with patch("agent.cli.RadegastProcess") as mock_radegast:
+        with patch("radegast_edr_agent.cli.RadegastProcess") as mock_radegast:
             radegast = cli.create_radegast_process()
         assert radegast is None
         mock_radegast.assert_not_called()
 
     def test_starts_when_enabled(self, monkeypatch) -> None:
         monkeypatch.setattr(cli.settings, "start_rustinel", True)
-        with patch("agent.cli.RadegastProcess") as mock_radegast:
+        with patch("radegast_edr_agent.cli.RadegastProcess") as mock_radegast:
             mock_instance = mock_radegast.return_value
             radegast = cli.create_radegast_process()
 
@@ -130,15 +129,15 @@ def test_main_prints_version(capsys) -> None:
     assert captured.out.strip() == cli.get_version()
 
 
-@patch("agent.cli.BackendClient")
-@patch("agent.cli.ensure_signing_key")
-@patch("agent.cli.load_signing_key")
-@patch("agent.cli.PackSyncer")
-@patch("agent.cli.create_radegast_process")
-@patch("agent.cli.AlertTailer")
-@patch("agent.cli.check_and_perform_autoupdate")
-@patch("agent.cli.time.time")
-@patch("agent.cli.os.execvp")
+@patch("radegast_edr_agent.cli.BackendClient")
+@patch("radegast_edr_agent.cli.ensure_signing_key")
+@patch("radegast_edr_agent.cli.load_signing_key")
+@patch("radegast_edr_agent.cli.PackSyncer")
+@patch("radegast_edr_agent.cli.create_radegast_process")
+@patch("radegast_edr_agent.cli.AlertTailer")
+@patch("radegast_edr_agent.cli.check_and_perform_autoupdate")
+@patch("radegast_edr_agent.cli.time.time")
+@patch("radegast_edr_agent.cli.os.execvp")
 def test_main_loop_triggers_autoupdate(
     mock_execvp, mock_time, mock_check_update, mock_tailer, mock_create_proc, mock_syncer, mock_load_key, mock_ensure_key, mock_client, monkeypatch
 ) -> None:

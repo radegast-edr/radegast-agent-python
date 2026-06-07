@@ -1,13 +1,12 @@
 """Tests for the backend API client."""
 
-import json
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
 
-from agent.client import BackendClient
+from radegast_edr_agent.client import BackendClient
 
 
 def make_response(status_code, method="GET", url="http://localhost:8000", **kwargs):

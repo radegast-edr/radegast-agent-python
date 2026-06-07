@@ -3,13 +3,12 @@
 import json
 import tempfile
 import time
-from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from agent.tailer import AlertTailer
+from radegast_edr_agent.tailer import AlertTailer
 
 
 @pytest.fixture
@@ -22,7 +21,7 @@ def setup_tailer():
         state_dir.mkdir()
 
         # Generate a signing key
-        from agent.crypto import generate_device_keypair, load_signing_key
+        from radegast_edr_agent.crypto import generate_device_keypair, load_signing_key
         key_path = Path(tmpdir) / "key"
         generate_device_keypair(key_path)
         signing_key = load_signing_key(key_path)

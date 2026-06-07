@@ -1,9 +1,6 @@
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from agent.version import get_agent_version, get_rustinel_version, report_versions_to_backend
+from radegast_edr_agent.version import get_agent_version, get_rustinel_version, report_versions_to_backend
 
 
 class TestGetAgentVersion:
@@ -17,7 +14,7 @@ class TestGetAgentVersion:
 
 
 class TestGetRustinelVersion:
-    @patch("agent.version.Path")
+    @patch("radegast_edr_agent.version.Path")
     def test_returns_none_when_binary_not_exists(self, mock_path):
         mock_path_instance = MagicMock()
         mock_path_instance.exists.return_value = False
@@ -25,8 +22,8 @@ class TestGetRustinelVersion:
         result = get_rustinel_version("/path/to/rustinel")
         assert result is None
 
-    @patch("agent.version.Path")
-    @patch("agent.version.os.access")
+    @patch("radegast_edr_agent.version.Path")
+    @patch("radegast_edr_agent.version.os.access")
     def test_returns_none_when_not_executable(self, mock_access, mock_path):
         mock_path_instance = MagicMock()
         mock_path_instance.exists.return_value = True
@@ -36,9 +33,9 @@ class TestGetRustinelVersion:
         result = get_rustinel_version("/path/to/rustinel")
         assert result is None
 
-    @patch("agent.version.Path")
-    @patch("agent.version.os.access")
-    @patch("agent.version.subprocess.run")
+    @patch("radegast_edr_agent.version.Path")
+    @patch("radegast_edr_agent.version.os.access")
+    @patch("radegast_edr_agent.version.subprocess.run")
     def test_returns_version_on_success(self, mock_run, mock_access, mock_path):
         mock_path_instance = MagicMock()
         mock_path_instance.exists.return_value = True
@@ -63,9 +60,9 @@ class TestGetRustinelVersion:
             check=True,
         )
 
-    @patch("agent.version.Path")
-    @patch("agent.version.os.access")
-    @patch("agent.version.subprocess.run")
+    @patch("radegast_edr_agent.version.Path")
+    @patch("radegast_edr_agent.version.os.access")
+    @patch("radegast_edr_agent.version.subprocess.run")
     def test_handles_called_process_error(self, mock_run, mock_access, mock_path):
         mock_path_instance = MagicMock()
         mock_path_instance.exists.return_value = True
@@ -82,9 +79,9 @@ class TestGetRustinelVersion:
         result = get_rustinel_version("/path/to/rustinel")
         assert result is None
 
-    @patch("agent.version.Path")
-    @patch("agent.version.os.access")
-    @patch("agent.version.subprocess.run")
+    @patch("radegast_edr_agent.version.Path")
+    @patch("radegast_edr_agent.version.os.access")
+    @patch("radegast_edr_agent.version.subprocess.run")
     def test_handles_timeout(self, mock_run, mock_access, mock_path):
         mock_path_instance = MagicMock()
         mock_path_instance.exists.return_value = True
@@ -99,9 +96,9 @@ class TestGetRustinelVersion:
         result = get_rustinel_version("/path/to/rustinel")
         assert result is None
 
-    @patch("agent.version.Path")
-    @patch("agent.version.os.access")
-    @patch("agent.version.subprocess.run")
+    @patch("radegast_edr_agent.version.Path")
+    @patch("radegast_edr_agent.version.os.access")
+    @patch("radegast_edr_agent.version.subprocess.run")
     def test_handles_other_exception(self, mock_run, mock_access, mock_path):
         mock_path_instance = MagicMock()
         mock_path_instance.exists.return_value = True
@@ -117,7 +114,7 @@ class TestGetRustinelVersion:
 
 
 class TestReportVersionsToBackend:
-    @patch("agent.version.logger")
+    @patch("radegast_edr_agent.version.logger")
     def test_reports_successfully(self, mock_logger):
         mock_client = MagicMock()
         get_agent_version.return_value = "1.0.0"
@@ -126,7 +123,7 @@ class TestReportVersionsToBackend:
         mock_client.report_versions.assert_called_once_with("1.0.0", "0.5.0")
         mock_logger.error.assert_not_called()
 
-    @patch("agent.version.logger")
+    @patch("radegast_edr_agent.version.logger")
     def test_reports_with_none_rustinel_version(self, mock_logger):
         mock_client = MagicMock()
         
@@ -134,7 +131,7 @@ class TestReportVersionsToBackend:
         mock_client.report_versions.assert_called_once_with("1.0.0", None)
         mock_logger.error.assert_not_called()
 
-    @patch("agent.version.logger")
+    @patch("radegast_edr_agent.version.logger")
     def test_handles_exception(self, mock_logger):
         mock_client = MagicMock()
         mock_client.report_versions.side_effect = Exception("Connection failed")
