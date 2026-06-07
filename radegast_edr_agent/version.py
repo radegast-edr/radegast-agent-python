@@ -15,7 +15,7 @@ def get_agent_version() -> str:
     """Get the agent version from package metadata or pyproject.toml."""
     try:
         from importlib.metadata import version
-        return version("radegast-agent")
+        return version("radegast-edr-agent")
     except Exception:
         # Fallback: try to read from pyproject.toml (for development)
         import tomllib
