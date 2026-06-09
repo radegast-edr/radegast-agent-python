@@ -69,6 +69,11 @@ class BackendClient:
         resp = self._request("GET", "/logs/encryption-keys")
         return resp.json()
 
+    def get_exclusions(self) -> list[dict[str, Any]]:
+        """Fetch list of exclusions (JSONata queries) for this device's groups."""
+        resp = self._request("GET", "/exclusions/device")
+        return resp.json()["exclusions"]
+
     def submit_log(
         self,
         time: datetime,

@@ -376,3 +376,104 @@ class TestLogSeverity:
         (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
         assert tailer.poll() == 1
         assert client.submit_log.call_args.kwargs["severity"] == "medium"
+
+
+class TestExclusionBehavior:
+    """Tests for exclusion filtering and force-refresh wiring."""
+
+    def _make_tailer_with_exclusions(self, setup_tailer, exclusions):
+        tailer, client, alerts_dir = setup_tailer
+        # Inject exclusions directly so we don't need the jsonata library at test time
+        tailer._exclusion_manager._exclusions = exclusions
+        tailer._exclusion_manager._last_fetched = time.time()  # prevent network call
+        return tailer, client, alerts_dir
+
+    def test_excluded_alert_is_not_forwarded(self, setup_tailer):
+        """An alert that matches an exclusion must be dropped, not submitted."""
+        exclusions = [{"id": 1, "name": "Drop test", "jsonata_query": "some_query"}]
+        tailer, client, alerts_dir = self._make_tailer_with_exclusions(setup_tailer, exclusions)
+
+        from ssage import SSAGE
+        priv = SSAGE.generate_private_key()
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": SSAGE(priv).public_key, "key_type": "regular"}
+        ]
+
+        alert = {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"}
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+
+        # Patch is_excluded to return True without needing jsonata
+        tailer._exclusion_manager.is_excluded = MagicMock(return_value=True)
+        processed = tailer.poll()
+
+        assert processed == 0
+        client.submit_log.assert_not_called()
+
+    def test_non_excluded_alert_is_forwarded(self, setup_tailer):
+        """An alert that does NOT match any exclusion must be submitted normally."""
+        tailer, client, alerts_dir = self._make_tailer_with_exclusions(setup_tailer, [])
+
+        from ssage import SSAGE
+        priv = SSAGE.generate_private_key()
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": SSAGE(priv).public_key, "key_type": "regular"}
+        ]
+
+        alert = {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"}
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+
+        tailer._exclusion_manager.is_excluded = MagicMock(return_value=False)
+        processed = tailer.poll()
+
+        assert processed == 1
+        client.submit_log.assert_called_once()
+
+    def test_force_refresh_exclusions_resets_timer(self, setup_tailer):
+        """force_refresh_exclusions() bypasses the rate-limit by zeroing _last_fetched."""
+        tailer, client, alerts_dir = setup_tailer
+        client.get_exclusions.return_value = []
+
+        # Simulate a recent refresh so normal refresh() would be a no-op
+        tailer._exclusion_manager._last_fetched = time.time()
+        tailer._exclusion_manager.refresh()
+        client.get_exclusions.assert_not_called()
+
+        # force_refresh_exclusions() must always hit the backend
+        tailer.force_refresh_exclusions()
+        client.get_exclusions.assert_called_once()
+
+    def test_force_refresh_exclusions_updates_list(self, setup_tailer):
+        """force_refresh_exclusions() replaces in-memory exclusions with backend response."""
+        tailer, client, alerts_dir = setup_tailer
+        new_exclusions = [{"id": 42, "name": "New rule", "jsonata_query": "true"}]
+        client.get_exclusions.return_value = new_exclusions
+
+        tailer.force_refresh_exclusions()
+
+        assert tailer._exclusion_manager._exclusions == new_exclusions
+
+    def test_no_exclusion_manager_when_disabled(self, setup_tailer):
+        """When enable_exclusions=False the tailer has no exclusion manager."""
+        tailer, client, alerts_dir = setup_tailer
+        # Patch a fresh tailer with exclusions disabled
+        from radegast_edr_agent.tailer import AlertTailer
+        from radegast_edr_agent.crypto import load_signing_key
+        from pathlib import Path
+        import tempfile, os
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            key_path = Path(tmpdir) / "key"
+            from radegast_edr_agent.crypto import generate_device_keypair
+            generate_device_keypair(key_path)
+            signing_key = load_signing_key(key_path)
+            disabled_tailer = AlertTailer(
+                client=client,
+                signing_key=signing_key,
+                alerts_dir=Path(tmpdir),
+                alerts_filename="alerts.json",
+                state_dir=Path(tmpdir),
+                enable_exclusions=False,
+            )
+        assert disabled_tailer._exclusion_manager is None
+        # force_refresh should be a no-op without crashing
+        disabled_tailer.force_refresh_exclusions()

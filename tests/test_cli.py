@@ -32,7 +32,7 @@ class TestIsNewerVersion:
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
-@patch("radegast_edr_agent.autoupdate.get_version")
+@patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
@@ -47,7 +47,7 @@ def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
-@patch("radegast_edr_agent.autoupdate.get_version")
+@patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
@@ -62,7 +62,7 @@ def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
-@patch("radegast_edr_agent.autoupdate.get_version")
+@patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
@@ -83,7 +83,7 @@ def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_versio
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
-@patch("radegast_edr_agent.autoupdate.get_version")
+@patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
 def test_check_and_perform_autoupdate_all_fail(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"

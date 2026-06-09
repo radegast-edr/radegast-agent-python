@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from radegast_edr_agent.client import BackendClient
 from radegast_edr_agent.crypto import encrypt_for_recipients, sign_message
+from radegast_edr_agent.exclusions import ExclusionManager
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class AlertTailer:
         alerts_filename: str,
         state_dir: Path,
         log_severity: bool = True,
+        enable_exclusions: bool = True,
     ):
         self._client = client
         self._signing_key = signing_key
@@ -39,6 +41,7 @@ class AlertTailer:
         self._alerts_filename = alerts_filename
         self._state_dir = state_dir
         self._log_severity = log_severity
+        self._enable_exclusions = enable_exclusions
         self._offset_path = state_dir / "tail_offset.json"
         self._sent_hashes_path = state_dir / "sent_alert_hashes.json"
         self._encryption_keys: list[str] = []
@@ -48,6 +51,13 @@ class AlertTailer:
         self._offset: int = 0
         self._sent_hashes: deque[str] = deque(maxlen=5000)
         self._sent_hashes_set: set[str] = set()
+        
+        # Initialize exclusion manager if enabled
+        if enable_exclusions:
+            self._exclusion_manager = ExclusionManager(client, state_dir)
+        else:
+            self._exclusion_manager = None
+        
         self._load_offset()
         self._load_sent_hashes()
 
@@ -129,18 +139,32 @@ class AlertTailer:
         """Fetch encryption keys from the backend if stale."""
         now = time.time()
         if now - self._keys_last_fetched < KEYS_REFRESH_INTERVAL and self._encryption_keys:
-            return
+            pass  # Will still refresh exclusions if needed
+        else:
+            try:
+                keys_data = self._client.get_encryption_keys()
+                self._encryption_keys = [k["public_key"] for k in keys_data]
+                self._keys_last_fetched = now
+                if self._encryption_keys:
+                    logger.debug("Refreshed encryption keys: %d recipient(s)", len(self._encryption_keys))
+                else:
+                    logger.warning("No encryption keys available — logs will not be forwarded")
+            except Exception as e:
+                logger.error("Failed to refresh encryption keys: %s", e)
+        
+        # Always refresh exclusions (it has its own interval)
+        if self._exclusion_manager:
+            self._exclusion_manager.refresh()
 
-        try:
-            keys_data = self._client.get_encryption_keys()
-            self._encryption_keys = [k["public_key"] for k in keys_data]
-            self._keys_last_fetched = now
-            if self._encryption_keys:
-                logger.debug("Refreshed encryption keys: %d recipient(s)", len(self._encryption_keys))
-            else:
-                logger.warning("No encryption keys available — logs will not be forwarded")
-        except Exception as e:
-            logger.error("Failed to refresh encryption keys: %s", e)
+    def force_refresh_exclusions(self) -> None:
+        """Force an immediate exclusion refresh, bypassing the rate-limit interval.
+
+        Call this whenever packs are synced so exclusions stay in lock-step
+        with the rest of the device-group configuration.
+        """
+        if self._exclusion_manager:
+            self._exclusion_manager._last_fetched = 0
+            self._exclusion_manager.refresh()
 
     def poll(self) -> int:
         """Poll for new alert lines and submit them. Returns number of lines processed."""
@@ -203,6 +227,7 @@ class AlertTailer:
 
         # Parse to extract timestamp and optional severity
         severity = None
+        alert = None
         try:
             alert = json.loads(line)
             timestamp_str = alert.get("@timestamp")
@@ -225,6 +250,12 @@ class AlertTailer:
                             pass
         except (json.JSONDecodeError, ValueError):
             alert_time = datetime.now(timezone.utc)
+
+        # Check if this alert should be excluded
+        if self._exclusion_manager and alert is not None:
+            if self._exclusion_manager.is_excluded(alert):
+                logger.info("Alert excluded by exclusion rule, not forwarding")
+                return False
 
         # Encrypt the alert content for all recipients
         encrypted = encrypt_for_recipients(line, self._encryption_keys)

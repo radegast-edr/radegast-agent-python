@@ -144,7 +144,12 @@ def main(argv: list[str] | None = None) -> None:
         alerts_filename=settings.alerts_filename,
         state_dir=settings.state_dir,
         log_severity=settings.log_severity,
+        enable_exclusions=True,
     )
+
+    # Initial exclusion load — runs immediately so exclusions are ready before the
+    # first alert is processed (not deferred to the first poll cycle).
+    tailer.force_refresh_exclusions()
 
     # Graceful shutdown handler
     shutdown = False
@@ -177,12 +182,13 @@ def main(argv: list[str] | None = None) -> None:
                 logger.error("Alert poll error: %s", e)
 
             now = time.time()
-            # Periodic pack sync
+            # Periodic pack sync — also force-refresh exclusions so group config stays in sync
             if now - last_sync >= settings.sync_interval:
                 try:
                     syncer.sync()
                 except Exception as e:
                     logger.error("Pack sync error: %s", e)
+                tailer.force_refresh_exclusions()
                 last_sync = now
 
             # Periodic autoupdate check

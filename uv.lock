@@ -415,6 +415,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jsonata-python"
+version = "0.6.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/cc/16f20b1e9466a9904601df339a6b2b31d82eeba6ae97610076ffc9fec9a2/jsonata_python-0.6.2.tar.gz", hash = "sha256:6d553563f0d2cbfd64842d6b35fcec18615acbcf0859061be04bacce3a83b418", size = 363452, upload-time = "2026-03-21T07:02:20.565Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b6/fb/8ba2f1354718839087cb83b138d710026a05a05e3780c9afa8e43d0a9b86/jsonata_python-0.6.2-py3-none-any.whl", hash = "sha256:86c61632f23587d945cf1693fe966f023593c7ebfe2615814db8756c67e7c776", size = 83798, upload-time = "2026-03-21T07:02:19.018Z" },
+]
+
+[[package]]
 name = "packaging"
 version = "26.2"
 source = { registry = "https://pypi.org/simple" }
@@ -656,11 +665,12 @@ wheels = [
 
 [[package]]
 name = "radegast-edr-agent"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
+    { name = "jsonata-python" },
     { name = "pydantic-settings" },
     { name = "ssage" },
 ]
@@ -681,6 +691,7 @@ dev = [
 requires-dist = [
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
+    { name = "jsonata-python", specifier = ">=0.6.2" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
