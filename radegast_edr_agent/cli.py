@@ -166,12 +166,9 @@ def main(argv: list[str] | None = None) -> None:
     # Main loop
     last_sync = time.time()
     last_autoupdate = time.time()
-    if settings.agent_autoupdate_time is not None:
-        logger.info("Agent running — polling alerts every %ds, syncing packs every %ds, checking autoupdate every %ds",
-                    POLL_INTERVAL, settings.sync_interval, settings.agent_autoupdate_time)
-    else:
-        logger.info("Agent running — polling alerts every %ds, syncing packs every %ds",
-                    POLL_INTERVAL, settings.sync_interval)
+    first_autoupdate_done = False
+    logger.info("Agent running — polling alerts every %ds, syncing packs every %ds, first autoupdate check after %ds, then every %ds",
+                POLL_INTERVAL, settings.sync_interval, settings.agent_autoupdate_initial_delay, settings.agent_autoupdate_interval)
 
     try:
         while not shutdown:
@@ -192,10 +189,9 @@ def main(argv: list[str] | None = None) -> None:
                 last_sync = now
 
             # Periodic autoupdate check
-            if (
-                settings.agent_autoupdate_time is not None
-                and now - last_autoupdate >= settings.agent_autoupdate_time
-            ):
+            # First check after initial delay, subsequent checks after interval
+            autoupdate_delay = settings.agent_autoupdate_initial_delay if not first_autoupdate_done else settings.agent_autoupdate_interval
+            if now - last_autoupdate >= autoupdate_delay:
                 try:
                     updated = check_and_perform_autoupdate()
                     if updated:
@@ -208,6 +204,7 @@ def main(argv: list[str] | None = None) -> None:
                 except Exception as e:
                     logger.error("Autoupdate error: %s", e)
                 last_autoupdate = now
+                first_autoupdate_done = True
 
             time.sleep(POLL_INTERVAL)
     finally:

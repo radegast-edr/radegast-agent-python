@@ -58,7 +58,7 @@ def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version
 
     updated = check_and_perform_autoupdate()
     assert updated is True
-    mock_run.assert_called_once_with(["uv", "tool", "upgrade", "radegast-agent"], check=True)
+    mock_run.assert_called_once_with(["uv", "tool", "upgrade", "radegast-edr-agent"], check=True)
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
@@ -72,13 +72,14 @@ def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_versio
     mock_get.return_value = mock_response
 
     import subprocess
-    mock_run.side_effect = [subprocess.CalledProcessError(1, "uv"), None]
+    mock_run.side_effect = [subprocess.CalledProcessError(1, "uv"), subprocess.CalledProcessError(1, "uv"), None]
 
     updated = check_and_perform_autoupdate()
     assert updated is True
 
-    assert mock_run.call_count == 2
-    mock_run.assert_any_call(["uv", "tool", "upgrade", "radegast-agent"], check=True)
+    assert mock_run.call_count == 3
+    mock_run.assert_any_call(["uv", "tool", "upgrade", "radegast-edr-agent"], check=True)
+    mock_run.assert_any_call(["uv", "tool", "install", "--upgrade", "radegast-edr-agent"], check=True)
     mock_run.assert_any_call(["uv", "tool", "install", "--upgrade", "https://github.com/radegast-edr/radegast-agent-python/archive/refs/heads/main.zip"], check=True)
 
 
@@ -97,7 +98,7 @@ def test_check_and_perform_autoupdate_all_fail(mock_run, mock_get_version, mock_
 
     updated = check_and_perform_autoupdate()
     assert updated is False
-    assert mock_run.call_count == 2
+    assert mock_run.call_count == 3
 
 
 class TestCreateRadegastProcess:
@@ -142,10 +143,11 @@ def test_main_loop_triggers_autoupdate(
     mock_execvp, mock_time, mock_check_update, mock_tailer, mock_create_proc, mock_syncer, mock_load_key, mock_ensure_key, mock_client, monkeypatch
 ) -> None:
     monkeypatch.setattr(cli.settings, "device_token", "dummy-token")
-    monkeypatch.setattr(cli.settings, "agent_autoupdate_time", 90000)
+    monkeypatch.setattr(cli.settings, "agent_autoupdate_initial_delay", 90000)
+    monkeypatch.setattr(cli.settings, "agent_autoupdate_interval", 86400)
     monkeypatch.setattr(cli.settings, "sync_interval", 300)
 
-    mock_time.side_effect = [0.0, 0.0, 0.0, 95000.0, 95000.0] + [95000.0] * 10
+    mock_time.side_effect = [0.0, 0.0, 0.0, 95000.0, 95000.0] + [195000.0] * 10
     mock_check_update.return_value = True
 
     mock_execvp.side_effect = SystemExit(0)
