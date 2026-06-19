@@ -15,11 +15,14 @@ class AgentSettings(BaseSettings):
     alerts_dir: Path = Path("./logs")
     alerts_filename: str = "alerts.json"
     start_rustinel: bool = False
-    log_severity: bool = True
+    send_severity: bool = True
+    send_rule_id: bool = True
 
     sync_interval: int = 300  # seconds between pack sync checks
     agent_autoupdate_initial_delay: int = 300  # seconds until first autoupdate check
-    agent_autoupdate_interval: int = 86400  # seconds between subsequent autoupdate checks
+    agent_autoupdate_interval: int = (
+        86400  # seconds between subsequent autoupdate checks
+    )
     signing_key_path: Path | None = None
     state_dir: Path = Path("./.radegast-agent")
 

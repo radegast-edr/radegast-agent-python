@@ -72,7 +72,7 @@ class ExclusionManager:
 
     def is_excluded(self, alert: dict[str, Any]) -> bool:
         """Check if an alert matches any exclusion.
-        
+
         Returns True if the alert should be excluded (matches any exclusion query).
         Returns False if the alert should be processed.
         """
@@ -92,7 +92,7 @@ class ExclusionManager:
                     logger.info(
                         "Alert excluded by rule '%s' (id=%s)",
                         exclusion.get("name", "unnamed"),
-                        exclusion.get("id", "unknown")
+                        exclusion.get("id", "unknown"),
                     )
                     return True
             except Exception as e:
@@ -100,10 +100,9 @@ class ExclusionManager:
                     "Error evaluating exclusion '%s' (id=%s): %s",
                     exclusion.get("name", "unnamed"),
                     exclusion.get("id", "unknown"),
-                    e
+                    e,
                 )
                 # Continue to next exclusion even if this one fails
                 continue
 
         return False
-

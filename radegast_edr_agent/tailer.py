@@ -32,7 +32,8 @@ class AlertTailer:
         alerts_dir: Path,
         alerts_filename: str,
         state_dir: Path,
-        log_severity: bool = True,
+        send_severity: bool = True,
+        send_rule_id: bool = True,
         enable_exclusions: bool = True,
     ):
         self._client = client
@@ -40,7 +41,8 @@ class AlertTailer:
         self._alerts_dir = alerts_dir
         self._alerts_filename = alerts_filename
         self._state_dir = state_dir
-        self._log_severity = log_severity
+        self._send_severity = send_severity
+        self._send_rule_id = send_rule_id
         self._enable_exclusions = enable_exclusions
         self._offset_path = state_dir / "tail_offset.json"
         self._sent_hashes_path = state_dir / "sent_alert_hashes.json"
@@ -51,13 +53,13 @@ class AlertTailer:
         self._offset: int = 0
         self._sent_hashes: deque[str] = deque(maxlen=5000)
         self._sent_hashes_set: set[str] = set()
-        
+
         # Initialize exclusion manager if enabled
         if enable_exclusions:
             self._exclusion_manager = ExclusionManager(client, state_dir)
         else:
             self._exclusion_manager = None
-        
+
         self._load_offset()
         self._load_sent_hashes()
 
@@ -126,9 +128,7 @@ class AlertTailer:
             candidates.append(exact)
 
         pattern = f"{self._alerts_filename}.*"
-        candidates.extend(
-            p for p in self._alerts_dir.glob(pattern) if p.is_file()
-        )
+        candidates.extend(p for p in self._alerts_dir.glob(pattern) if p.is_file())
 
         if not candidates:
             return None
@@ -138,7 +138,10 @@ class AlertTailer:
     def _refresh_keys(self) -> None:
         """Fetch encryption keys from the backend if stale."""
         now = time.time()
-        if now - self._keys_last_fetched < KEYS_REFRESH_INTERVAL and self._encryption_keys:
+        if (
+            now - self._keys_last_fetched < KEYS_REFRESH_INTERVAL
+            and self._encryption_keys
+        ):
             pass  # Will still refresh exclusions if needed
         else:
             try:
@@ -146,12 +149,17 @@ class AlertTailer:
                 self._encryption_keys = [k["public_key"] for k in keys_data]
                 self._keys_last_fetched = now
                 if self._encryption_keys:
-                    logger.debug("Refreshed encryption keys: %d recipient(s)", len(self._encryption_keys))
+                    logger.debug(
+                        "Refreshed encryption keys: %d recipient(s)",
+                        len(self._encryption_keys),
+                    )
                 else:
-                    logger.warning("No encryption keys available — logs will not be forwarded")
+                    logger.warning(
+                        "No encryption keys available — logs will not be forwarded"
+                    )
             except Exception as e:
                 logger.error("Failed to refresh encryption keys: %s", e)
-        
+
         # Always refresh exclusions (it has its own interval)
         if self._exclusion_manager:
             self._exclusion_manager.refresh()
@@ -176,7 +184,9 @@ class AlertTailer:
         current_inode = os.stat(alert_file).st_ino
         if self._current_file != alert_file or self._current_inode != current_inode:
             if self._current_file and self._current_file != alert_file:
-                logger.info("Alert file rotated: %s → %s", self._current_file, alert_file)
+                logger.info(
+                    "Alert file rotated: %s → %s", self._current_file, alert_file
+                )
             self._current_file = alert_file
             self._current_inode = current_inode
             self._offset = 0
@@ -225,17 +235,21 @@ class AlertTailer:
             logger.debug("Skipping duplicate alert line")
             return False
 
-        # Parse to extract timestamp and optional severity
+        # Parse to extract timestamp, optional severity, and optional rule info
         severity = None
+        rule_id = None
+        rule_type = None
         alert = None
         try:
             alert = json.loads(line)
             timestamp_str = alert.get("@timestamp")
             if timestamp_str:
-                alert_time = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+                alert_time = datetime.fromisoformat(
+                    timestamp_str.replace("Z", "+00:00")
+                )
             else:
                 alert_time = datetime.now(timezone.utc)
-            if self._log_severity:
+            if self._send_severity:
                 severity = alert.get("severity")
                 if severity is None:
                     event_severity = alert.get("event.severity")
@@ -244,10 +258,24 @@ class AlertTailer:
                     if event_severity is not None:
                         try:
                             val = float(event_severity)
-                            levels = [(0, "informational"), (21, "low"), (47, "medium"), (73, "high"), (99, "critical")]
-                            severity = min(levels, key=lambda pair: abs(val - pair[0]))[1]
+                            levels = [
+                                (0, "informational"),
+                                (21, "low"),
+                                (47, "medium"),
+                                (73, "high"),
+                                (99, "critical"),
+                            ]
+                            severity = min(levels, key=lambda pair: abs(val - pair[0]))[
+                                1
+                            ]
                         except (ValueError, TypeError):
                             pass
+            if self._send_rule_id:
+                raw_rule_id = alert.get("rule.id")
+                if raw_rule_id and isinstance(raw_rule_id, str) and "::" in raw_rule_id:
+                    parts = raw_rule_id.split("::", 1)
+                    rule_type = parts[0]
+                    rule_id = parts[1]
         except (json.JSONDecodeError, ValueError):
             alert_time = datetime.now(timezone.utc)
 
@@ -269,6 +297,8 @@ class AlertTailer:
             content=encrypted,
             signature=signature,
             severity=severity,
+            rule_id=rule_id,
+            rule_type=rule_type,
         )
 
         self._append_sent_hash(alert_hash)

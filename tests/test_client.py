@@ -86,7 +86,13 @@ class TestAutoRelogin:
 class TestGetAvailablePacks:
     def test_returns_pack_list(self, client):
         packs = [
-            {"enabled_id": 1, "pack_id": "test-pack", "version": "1.0.0", "pack_version_id": 5, "autoupdate": True}
+            {
+                "enabled_id": 1,
+                "pack_id": "test-pack",
+                "version": "1.0.0",
+                "pack_version_id": 5,
+                "autoupdate": True,
+            }
         ]
         with patch.object(client._client, "request") as mock:
             mock.return_value = make_response(
@@ -139,13 +145,51 @@ class TestSubmitLog:
                 url="http://localhost:8000/logs/",
                 json={"id": 1},
             )
-            client.submit_log(time=now, content="encrypted", signature="sig123", severity="critical")
+            client.submit_log(
+                time=now, content="encrypted", signature="sig123", severity="critical"
+            )
             mock.assert_called_once()
             call_kwargs = mock.call_args
             payload = call_kwargs.kwargs["json"]
             assert payload["content"] == "encrypted"
             assert payload["signature"] == "sig123"
             assert payload["severity"] == "critical"
+
+    def test_submits_with_rule_id_and_type(self, client):
+        now = datetime.now(timezone.utc)
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/logs/",
+                json={"id": 1},
+            )
+            client.submit_log(
+                time=now,
+                content="encrypted",
+                signature="sig123",
+                rule_id="abc-uuid",
+                rule_type="sigma",
+            )
+            mock.assert_called_once()
+            payload = mock.call_args.kwargs["json"]
+            assert payload["rule_id"] == "abc-uuid"
+            assert payload["rule_type"] == "sigma"
+            assert "severity" not in payload
+
+    def test_omits_rule_id_when_none(self, client):
+        now = datetime.now(timezone.utc)
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/logs/",
+                json={"id": 1},
+            )
+            client.submit_log(time=now, content="encrypted", signature="sig123")
+            payload = mock.call_args.kwargs["json"]
+            assert "rule_id" not in payload
+            assert "rule_type" not in payload
 
 
 class TestGetEncryptionKeys:
@@ -193,6 +237,25 @@ class TestReportVersions:
                 "GET",
                 "/packs/device/available",
                 params={"agent_version": "python 1.0.0", "rustinel_version": "0.5.0"},
+            )
+
+    def test_reports_with_os_type(self, client):
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="GET",
+                url="http://localhost:8000/packs/device/available",
+                json=[],
+            )
+            client.report_versions("1.0.0", "0.5.0", os_type="Ubuntu 22.04")
+            mock.assert_called_once_with(
+                "GET",
+                "/packs/device/available",
+                params={
+                    "agent_version": "python 1.0.0",
+                    "rustinel_version": "0.5.0",
+                    "os": "Ubuntu 22.04",
+                },
             )
 
     def test_reports_agent_version_only(self, client):

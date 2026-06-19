@@ -44,8 +44,6 @@ def test_sign_and_verify():
         assert len(sig_bytes) == 64  # Ed25519 signatures are 64 bytes
 
         # Verify using cryptography directly
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
         public_key = private_key.public_key()
         public_key.verify(sig_bytes, message)  # Raises if invalid

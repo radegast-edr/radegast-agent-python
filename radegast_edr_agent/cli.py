@@ -12,11 +12,19 @@ import time
 from radegast_edr_agent.autoupdate import check_and_perform_autoupdate
 from radegast_edr_agent.client import BackendClient
 from radegast_edr_agent.config import settings
-from radegast_edr_agent.crypto import generate_device_keypair, get_public_key_b64, load_signing_key
+from radegast_edr_agent.crypto import (
+    generate_device_keypair,
+    get_public_key_b64,
+    load_signing_key,
+)
 from radegast_edr_agent.packs import PackSyncer, ensure_placeholders_and_ioc
 from radegast_edr_agent.process import RadegastProcess
 from radegast_edr_agent.tailer import AlertTailer
-from radegast_edr_agent.version import get_agent_version, get_rustinel_version, report_versions_to_backend
+from radegast_edr_agent.version import (
+    get_agent_version,
+    get_rustinel_version,
+    report_versions_to_backend,
+)
 
 logger = logging.getLogger("agent")
 
@@ -37,7 +45,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def get_version() -> str:
     """Get the agent version from pyproject.toml (kept for backward compatibility)."""
     return get_agent_version()
-
 
 
 def setup_logging() -> None:
@@ -117,7 +124,9 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     # Report versions to backend on startup
-    report_versions_to_backend(client, get_agent_version(), get_rustinel_version(settings.rustinel_binary))
+    report_versions_to_backend(
+        client, get_agent_version(), get_rustinel_version(settings.rustinel_binary)
+    )
 
     # Ensure we have a signing key registered
     ensure_signing_key(client)
@@ -143,7 +152,8 @@ def main(argv: list[str] | None = None) -> None:
         alerts_dir=settings.alerts_dir,
         alerts_filename=settings.alerts_filename,
         state_dir=settings.state_dir,
-        log_severity=settings.log_severity,
+        send_severity=settings.send_severity,
+        send_rule_id=settings.send_rule_id,
         enable_exclusions=True,
     )
 
@@ -167,8 +177,13 @@ def main(argv: list[str] | None = None) -> None:
     last_sync = time.time()
     last_autoupdate = time.time()
     first_autoupdate_done = False
-    logger.info("Agent running — polling alerts every %ds, syncing packs every %ds, first autoupdate check after %ds, then every %ds",
-                POLL_INTERVAL, settings.sync_interval, settings.agent_autoupdate_initial_delay, settings.agent_autoupdate_interval)
+    logger.info(
+        "Agent running — polling alerts every %ds, syncing packs every %ds, first autoupdate check after %ds, then every %ds",
+        POLL_INTERVAL,
+        settings.sync_interval,
+        settings.agent_autoupdate_initial_delay,
+        settings.agent_autoupdate_interval,
+    )
 
     try:
         while not shutdown:
@@ -190,7 +205,11 @@ def main(argv: list[str] | None = None) -> None:
 
             # Periodic autoupdate check
             # First check after initial delay, subsequent checks after interval
-            autoupdate_delay = settings.agent_autoupdate_initial_delay if not first_autoupdate_done else settings.agent_autoupdate_interval
+            autoupdate_delay = (
+                settings.agent_autoupdate_initial_delay
+                if not first_autoupdate_done
+                else settings.agent_autoupdate_interval
+            )
             if now - last_autoupdate >= autoupdate_delay:
                 try:
                     updated = check_and_perform_autoupdate()

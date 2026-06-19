@@ -3,7 +3,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from radegast_edr_agent import cli
-from radegast_edr_agent.autoupdate import check_and_perform_autoupdate, is_newer_version, parse_version
+from radegast_edr_agent.autoupdate import (
+    check_and_perform_autoupdate,
+    is_newer_version,
+    parse_version,
+)
 from radegast_edr_agent.config import settings
 
 
@@ -34,7 +38,9 @@ class TestIsNewerVersion:
 @patch("radegast_edr_agent.autoupdate.httpx.get")
 @patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
-def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock_get) -> None:
+def test_check_and_perform_autoupdate_no_update(
+    mock_run, mock_get_version, mock_get
+) -> None:
     mock_get_version.return_value = "0.1.0"
 
     mock_response = MagicMock()
@@ -49,7 +55,9 @@ def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock
 @patch("radegast_edr_agent.autoupdate.httpx.get")
 @patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
-def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version, mock_get) -> None:
+def test_check_and_perform_autoupdate_success_upgrade(
+    mock_run, mock_get_version, mock_get
+) -> None:
     mock_get_version.return_value = "0.1.0"
 
     mock_response = MagicMock()
@@ -58,13 +66,17 @@ def test_check_and_perform_autoupdate_success_upgrade(mock_run, mock_get_version
 
     updated = check_and_perform_autoupdate()
     assert updated is True
-    mock_run.assert_called_once_with(["uv", "tool", "upgrade", "radegast-edr-agent"], check=True)
+    mock_run.assert_called_once_with(
+        ["uv", "tool", "upgrade", "radegast-edr-agent"], check=True
+    )
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
 @patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
-def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_version, mock_get) -> None:
+def test_check_and_perform_autoupdate_fallback_install(
+    mock_run, mock_get_version, mock_get
+) -> None:
     mock_get_version.return_value = "0.1.0"
 
     mock_response = MagicMock()
@@ -72,21 +84,41 @@ def test_check_and_perform_autoupdate_fallback_install(mock_run, mock_get_versio
     mock_get.return_value = mock_response
 
     import subprocess
-    mock_run.side_effect = [subprocess.CalledProcessError(1, "uv"), subprocess.CalledProcessError(1, "uv"), None]
+
+    mock_run.side_effect = [
+        subprocess.CalledProcessError(1, "uv"),
+        subprocess.CalledProcessError(1, "uv"),
+        None,
+    ]
 
     updated = check_and_perform_autoupdate()
     assert updated is True
 
     assert mock_run.call_count == 3
-    mock_run.assert_any_call(["uv", "tool", "upgrade", "radegast-edr-agent"], check=True)
-    mock_run.assert_any_call(["uv", "tool", "install", "--upgrade", "radegast-edr-agent"], check=True)
-    mock_run.assert_any_call(["uv", "tool", "install", "--upgrade", "https://github.com/radegast-edr/radegast-agent-python/archive/refs/heads/main.zip"], check=True)
+    mock_run.assert_any_call(
+        ["uv", "tool", "upgrade", "radegast-edr-agent"], check=True
+    )
+    mock_run.assert_any_call(
+        ["uv", "tool", "install", "--upgrade", "radegast-edr-agent"], check=True
+    )
+    mock_run.assert_any_call(
+        [
+            "uv",
+            "tool",
+            "install",
+            "--upgrade",
+            "https://github.com/radegast-edr/radegast-agent-python/archive/refs/heads/main.zip",
+        ],
+        check=True,
+    )
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
 @patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
-def test_check_and_perform_autoupdate_all_fail(mock_run, mock_get_version, mock_get) -> None:
+def test_check_and_perform_autoupdate_all_fail(
+    mock_run, mock_get_version, mock_get
+) -> None:
     mock_get_version.return_value = "0.1.0"
 
     mock_response = MagicMock()
@@ -94,6 +126,7 @@ def test_check_and_perform_autoupdate_all_fail(mock_run, mock_get_version, mock_
     mock_get.return_value = mock_response
 
     import subprocess
+
     mock_run.side_effect = subprocess.CalledProcessError(1, "uv")
 
     updated = check_and_perform_autoupdate()
@@ -140,7 +173,16 @@ def test_main_prints_version(capsys) -> None:
 @patch("radegast_edr_agent.cli.time.time")
 @patch("radegast_edr_agent.cli.os.execvp")
 def test_main_loop_triggers_autoupdate(
-    mock_execvp, mock_time, mock_check_update, mock_tailer, mock_create_proc, mock_syncer, mock_load_key, mock_ensure_key, mock_client, monkeypatch
+    mock_execvp,
+    mock_time,
+    mock_check_update,
+    mock_tailer,
+    mock_create_proc,
+    mock_syncer,
+    mock_load_key,
+    mock_ensure_key,
+    mock_client,
+    monkeypatch,
 ) -> None:
     monkeypatch.setattr(cli.settings, "device_token", "dummy-token")
     monkeypatch.setattr(cli.settings, "agent_autoupdate_initial_delay", 90000)

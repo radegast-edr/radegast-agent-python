@@ -38,7 +38,8 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 | `RADEGAST_AGENT_ALERTS_DIR`               | `./logs`                                                    | Directory containing alert files                                                   |
 | `RADEGAST_AGENT_ALERTS_FILENAME`          | `alerts.json`                                               | Alert file base name                                                               |
 | `RADEGAST_AGENT_START_RUSTINEL`           | `false`                                                     | If `true`, start the local `rustinel` process; otherwise only tail alerts          |
-| `RADEGAST_AGENT_LOG_SEVERITY`             | `true`                                                      | If `true`, parse the of the alert and send it unencrypted in the request           |
+| `RADEGAST_AGENT_SEND_SEVERITY`            | `true`                                                      | If `true`, parse the severity of the alert and send it unencrypted in the request  |
+| `RADEGAST_AGENT_SEND_RULE_ID`             | `true`                                                      | If `true`, parse `rule.id` from the alert and sends it unencrypted in the request  |
 | `RADEGAST_AGENT_SYNC_INTERVAL`            | `300`                                                       | Seconds between pack sync checks                                                   |
 | `RADEGAST_AGENT_AUTOUPDATE_INITIAL_DELAY` | `300` (5 minutes)                                           | Seconds until first autoupdate check after startup                                 |
 | `RADEGAST_AGENT_AUTOUPDATE_INTERVAL`      | `86400` (24 hours)                                          | Seconds between subsequent autoupdate checks                                       |

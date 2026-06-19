@@ -3,12 +3,11 @@
 Welcome, AI Agent! This file describes the project's architecture, conventions, environment, commands, and boundaries to help you build and maintain this codebase effectively.
 
 ## Project Overview
-The **Radegast Agent** is a Python wrapper for the `rustinel` EDR (Endpoint Detection and Response) binary.
+The **Radegast Agent** is a Python agent for EDR (Endpoint Detection and Response).
 Its primary responsibilities are:
 1. Synchronizing detection packs from a backend API.
 2. Extracting Sigma, Yara, and IoC rules/signatures to local directories under `rules/`.
 3. Tailing the `alerts.json` file in NDJSON format, encrypting alerts, signing them with the device key, and uploading them to the backend API.
-4. Managing the lifecycle of the `rustinel` subprocess (auto-starting and monitoring/restarting it).
 
 ## Tech Stack
 - **Language:** Python 3.11+
@@ -21,6 +20,8 @@ Its primary responsibilities are:
 - After finishing implementation of a feature, run all tests to see that everything works as expected
 - After implementing a new feature, be sure to add tests
 - After changing `agent/config.py`, make sure to regenerate/update the environment variables table in `README.md`
+- After every code change, run `ruff check .` and `ruff format .` to ensure code quality and consistency
+- Before committing, ensure all tests pass with `uv run pytest`
 
 ## Environment & Commands
 Always use the `uv` toolchain to run commands in this project:
@@ -37,7 +38,7 @@ Always use the `uv` toolchain to run commands in this project:
 ## Architecture and Structure
 
 - [`agent/`](file:///home/adam/Projekty/radegast/radegast-agent-python/agent/) - Python package containing the agent implementation.
-  - [`cli.py`](file:///home/adam/Projekty/radegast/radegast-agent-python/agent/cli.py) - Main CLI entry point. Initializes directories, backend clients, signing keys, starts the pack syncer, tails alerts, and manages subprocess lifecycles.
+  - [`cli.py`](file:///home/adam/Projekty/radegast/radegast-agent-python/agent/cli.py) - Main CLI entry point. Initializes directories, backend clients, signing keys, starts the pack syncer, and tails alerts.
   - [`config.py`](file:///home/adam/Projekty/radegast/radegast-agent-python/agent/config.py) - Pydantic settings. Environment variables prefixed with `RADEGAST_AGENT_`.
   - [`client.py`](file:///home/adam/Projekty/radegast/radegast-agent-python/agent/client.py) - Handles authentication (login), pack downloads, encryption keys fetching, and log submission.
   - [`packs.py`](file:///home/adam/Projekty/radegast/radegast-agent-python/agent/packs.py) - Pulls zip packs from the backend, extracts rules, updates the IoC registry, and ensures required placeholder rules are present.

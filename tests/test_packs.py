@@ -48,11 +48,13 @@ class TestPackSync:
             }
         ]
 
-        zip_data = make_zip({
-            "sigma/detect_mimikatz.yml": "title: Mimikatz\n",
-            "yara/malware.yar": "rule test { condition: true }",
-            "ioc/hashes.txt": "abc123;test hash\n",
-        })
+        zip_data = make_zip(
+            {
+                "sigma/detect_mimikatz.yml": "title: Mimikatz\n",
+                "yara/malware.yar": "rule test { condition: true }",
+                "ioc/hashes.txt": "abc123;test hash\n",
+            }
+        )
         client.download_pack.return_value = zip_data
 
         updated = syncer.sync()
@@ -135,10 +137,12 @@ class TestPackSync:
             }
         ]
 
-        client.download_pack.return_value = make_zip({
-            "ioc/old.txt": "oldhash\n",
-            "ioc/common.txt": "commonhash\n",
-        })
+        client.download_pack.return_value = make_zip(
+            {
+                "ioc/old.txt": "oldhash\n",
+                "ioc/common.txt": "commonhash\n",
+            }
+        )
         syncer.sync()
 
         assert (rules_dir / "ioc" / "old.txt").exists()
@@ -277,14 +281,26 @@ class TestPackSync:
 
         # First version
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_id": "pack1", "version": "1.0.0", "pack_version_id": 10, "autoupdate": True}
+            {
+                "enabled_id": 1,
+                "pack_id": "pack1",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            }
         ]
         client.download_pack.return_value = make_zip({"sigma/old.yml": "old"})
         syncer.sync()
 
         # New version (different pack_version_id)
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_id": "pack1", "version": "2.0.0", "pack_version_id": 11, "autoupdate": True}
+            {
+                "enabled_id": 1,
+                "pack_id": "pack1",
+                "version": "2.0.0",
+                "pack_version_id": 11,
+                "autoupdate": True,
+            }
         ]
         client.download_pack.return_value = make_zip({"sigma/new.yml": "new"})
         updated = syncer.sync()
@@ -297,15 +313,23 @@ class TestExtraction:
         syncer, client, rules_dir, _ = setup_syncer
 
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_id": "mixed", "version": "1.0.0", "pack_version_id": 20, "autoupdate": True}
+            {
+                "enabled_id": 1,
+                "pack_id": "mixed",
+                "version": "1.0.0",
+                "pack_version_id": 20,
+                "autoupdate": True,
+            }
         ]
 
         # Files at root level without subdirectories
-        zip_data = make_zip({
-            "detect_powershell.yaml": "title: PowerShell\n",
-            "ransomware.yara": "rule ransom { condition: true }",
-            "domains.txt": "evil.com;C2\n",
-        })
+        zip_data = make_zip(
+            {
+                "detect_powershell.yaml": "title: PowerShell\n",
+                "ransomware.yara": "rule ransom { condition: true }",
+                "domains.txt": "evil.com;C2\n",
+            }
+        )
         client.download_pack.return_value = zip_data
 
         syncer.sync()
@@ -317,18 +341,40 @@ class TestExtraction:
         syncer, client, rules_dir, _ = setup_syncer
 
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_id": "deep", "version": "1.0.0", "pack_version_id": 30, "autoupdate": True}
+            {
+                "enabled_id": 1,
+                "pack_id": "deep",
+                "version": "1.0.0",
+                "pack_version_id": 30,
+                "autoupdate": True,
+            }
         ]
 
-        zip_data = make_zip({
-            "sigma/windows/process_creation/mimikatz.yml": "title: Mimikatz\n",
-            "yara/malware/trojan/radegast_edr_agent.yar": "rule agent {}",
-        })
+        zip_data = make_zip(
+            {
+                "sigma/windows/process_creation/mimikatz.yml": "title: Mimikatz\n",
+                "yara/malware/trojan/radegast_edr_agent.yar": "rule agent {}",
+            }
+        )
         client.download_pack.return_value = zip_data
 
         syncer.sync()
-        assert (rules_dir / "sigma" / "deep" / "windows" / "process_creation" / "mimikatz.yml").exists()
-        assert (rules_dir / "yara" / "deep" / "malware" / "trojan" / "radegast_edr_agent.yar").exists()
+        assert (
+            rules_dir
+            / "sigma"
+            / "deep"
+            / "windows"
+            / "process_creation"
+            / "mimikatz.yml"
+        ).exists()
+        assert (
+            rules_dir
+            / "yara"
+            / "deep"
+            / "malware"
+            / "trojan"
+            / "radegast_edr_agent.yar"
+        ).exists()
 
 
 class TestManifestPersistence:
@@ -336,7 +382,13 @@ class TestManifestPersistence:
         syncer, client, rules_dir, state_dir = setup_syncer
 
         client.get_available_packs.return_value = [
-            {"enabled_id": 1, "pack_id": "pack1", "version": "1.0.0", "pack_version_id": 10, "autoupdate": True}
+            {
+                "enabled_id": 1,
+                "pack_id": "pack1",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            }
         ]
         client.download_pack.return_value = make_zip({"sigma/r.yml": "x"})
         syncer.sync()

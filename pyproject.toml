@@ -30,4 +30,7 @@ build-backend = "hatchling.build"
 packages = ["radegast_edr_agent"]
 
 [dependency-groups]
-dev = ["radegast-edr-agent[dev]"]
+dev = [
+    "radegast-edr-agent[dev]",
+    "ruff>=0.15.17",
+]

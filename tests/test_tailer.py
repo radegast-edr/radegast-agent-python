@@ -22,6 +22,7 @@ def setup_tailer():
 
         # Generate a signing key
         from radegast_edr_agent.crypto import generate_device_keypair, load_signing_key
+
         key_path = Path(tmpdir) / "key"
         generate_device_keypair(key_path)
         signing_key = load_signing_key(key_path)
@@ -82,6 +83,7 @@ class TestAlertProcessing:
 
         # Need real AGE keys for encryption
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
@@ -113,6 +115,7 @@ class TestAlertProcessing:
         tailer, client, alerts_dir = setup_tailer
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
@@ -133,6 +136,7 @@ class TestAlertProcessing:
         tailer, client, alerts_dir = setup_tailer
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
@@ -140,7 +144,9 @@ class TestAlertProcessing:
         ]
 
         alert = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"})
-        duplicate = json.dumps({"rule.name": "Test", "@timestamp": "2026-01-01T12:00:00Z"})
+        duplicate = json.dumps(
+            {"rule.name": "Test", "@timestamp": "2026-01-01T12:00:00Z"}
+        )
         (alerts_dir / "alerts.json").write_text(alert + "\n" + duplicate + "\n")
 
         processed = tailer.poll()
@@ -151,13 +157,16 @@ class TestAlertProcessing:
         tailer, client, alerts_dir = setup_tailer
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
             {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
         ]
 
-        alert_line = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"})
+        alert_line = json.dumps(
+            {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"}
+        )
         (alerts_dir / "alerts.json").write_text(alert_line + "\n")
         tailer.poll()
 
@@ -181,6 +190,7 @@ class TestAlertProcessing:
         tailer, client, alerts_dir = setup_tailer
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
@@ -188,7 +198,9 @@ class TestAlertProcessing:
         ]
 
         alert_file = alerts_dir / "alerts.json"
-        alert1 = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "First"})
+        alert1 = json.dumps(
+            {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "First"}
+        )
         alert_file.write_text(alert1 + "\n")
 
         tailer.poll()
@@ -196,7 +208,9 @@ class TestAlertProcessing:
 
         # Append a new line
         with open(alert_file, "a") as f:
-            alert2 = json.dumps({"@timestamp": "2026-01-01T12:01:00Z", "rule.name": "Second"})
+            alert2 = json.dumps(
+                {"@timestamp": "2026-01-01T12:01:00Z", "rule.name": "Second"}
+            )
             f.write(alert2 + "\n")
 
         processed = tailer.poll()
@@ -208,6 +222,7 @@ class TestOffsetPersistence:
         tailer, client, alerts_dir = setup_tailer
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
@@ -244,12 +259,13 @@ class TestNoEncryptionKeys:
         client.submit_log.assert_not_called()
 
 
-class TestLogSeverity:
+class TestSendSeverity:
     def test_parses_severity_when_enabled(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
-        tailer._log_severity = True
+        tailer._send_severity = True
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
@@ -274,9 +290,10 @@ class TestLogSeverity:
 
     def test_ignores_severity_when_disabled(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
-        tailer._log_severity = False
+        tailer._send_severity = False
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
@@ -301,9 +318,10 @@ class TestLogSeverity:
 
     def test_falls_back_to_event_severity_flat(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
-        tailer._log_severity = True
+        tailer._send_severity = True
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
@@ -338,30 +356,27 @@ class TestLogSeverity:
 
     def test_falls_back_to_event_severity_nested(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
-        tailer._log_severity = True
+        tailer._send_severity = True
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
             {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
         ]
 
-        alert = {
-            "@timestamp": "2026-01-01T12:00:00Z",
-            "event": {
-                "severity": 99
-            }
-        }
+        alert = {"@timestamp": "2026-01-01T12:00:00Z", "event": {"severity": 99}}
         (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
         assert tailer.poll() == 1
         assert client.submit_log.call_args.kwargs["severity"] == "critical"
 
     def test_severity_takes_precedence_over_event_severity(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
-        tailer._log_severity = True
+        tailer._send_severity = True
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
         client.get_encryption_keys.return_value = [
@@ -378,6 +393,83 @@ class TestLogSeverity:
         assert client.submit_log.call_args.kwargs["severity"] == "medium"
 
 
+class TestSendRuleId:
+    def _make_ssage(self):
+        from ssage import SSAGE
+
+        priv = SSAGE.generate_private_key()
+        return SSAGE(priv)
+
+    def test_sends_rule_id_and_type_when_enabled(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._send_rule_id = True
+        s = self._make_ssage()
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "rule.id": "sigma::12345678-1234-1234-1234-123456789abc",
+        }
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+        assert tailer.poll() == 1
+        call_kwargs = client.submit_log.call_args.kwargs
+        assert call_kwargs["rule_id"] == "12345678-1234-1234-1234-123456789abc"
+        assert call_kwargs["rule_type"] == "sigma"
+
+    def test_does_not_send_rule_id_when_disabled(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._send_rule_id = False
+        s = self._make_ssage()
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "rule.id": "sigma::12345678-1234-1234-1234-123456789abc",
+        }
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+        assert tailer.poll() == 1
+        call_kwargs = client.submit_log.call_args.kwargs
+        assert call_kwargs.get("rule_id") is None
+        assert call_kwargs.get("rule_type") is None
+
+    def test_ignores_rule_id_without_separator(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._send_rule_id = True
+        s = self._make_ssage()
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "rule.id": "plainruleid",
+        }
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+        assert tailer.poll() == 1
+        call_kwargs = client.submit_log.call_args.kwargs
+        assert call_kwargs.get("rule_id") is None
+        assert call_kwargs.get("rule_type") is None
+
+    def test_handles_missing_rule_id(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._send_rule_id = True
+        s = self._make_ssage()
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
+        ]
+
+        alert = {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"}
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+        assert tailer.poll() == 1
+        call_kwargs = client.submit_log.call_args.kwargs
+        assert call_kwargs.get("rule_id") is None
+        assert call_kwargs.get("rule_type") is None
+
+
 class TestExclusionBehavior:
     """Tests for exclusion filtering and force-refresh wiring."""
 
@@ -391,9 +483,12 @@ class TestExclusionBehavior:
     def test_excluded_alert_is_not_forwarded(self, setup_tailer):
         """An alert that matches an exclusion must be dropped, not submitted."""
         exclusions = [{"id": 1, "name": "Drop test", "jsonata_query": "some_query"}]
-        tailer, client, alerts_dir = self._make_tailer_with_exclusions(setup_tailer, exclusions)
+        tailer, client, alerts_dir = self._make_tailer_with_exclusions(
+            setup_tailer, exclusions
+        )
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         client.get_encryption_keys.return_value = [
             {"user_id": 1, "public_key": SSAGE(priv).public_key, "key_type": "regular"}
@@ -414,6 +509,7 @@ class TestExclusionBehavior:
         tailer, client, alerts_dir = self._make_tailer_with_exclusions(setup_tailer, [])
 
         from ssage import SSAGE
+
         priv = SSAGE.generate_private_key()
         client.get_encryption_keys.return_value = [
             {"user_id": 1, "public_key": SSAGE(priv).public_key, "key_type": "regular"}
@@ -459,11 +555,12 @@ class TestExclusionBehavior:
         from radegast_edr_agent.tailer import AlertTailer
         from radegast_edr_agent.crypto import load_signing_key
         from pathlib import Path
-        import tempfile, os
+        import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
             key_path = Path(tmpdir) / "key"
             from radegast_edr_agent.crypto import generate_device_keypair
+
             generate_device_keypair(key_path)
             signing_key = load_signing_key(key_path)
             disabled_tailer = AlertTailer(

@@ -30,19 +30,31 @@ class BackendClient:
         resp.raise_for_status()
         logger.info("Authenticated with backend")
 
-    def report_versions(self, agent_version: str, rustinel_version: str | None) -> None:
-        """Report agent and rustinel versions to the backend.
-        
+    def report_versions(
+        self,
+        agent_version: str,
+        rustinel_version: str | None,
+        os_type: str | None = None,
+    ) -> None:
+        """Report agent and rustinel versions, and OS type to the backend.
+
         This updates the device's version information in the database.
         The rustinel_version can be None if the binary doesn't exist.
         """
         params: dict[str, Any] = {"agent_version": f"python {agent_version}"}
         if rustinel_version is not None:
             params["rustinel_version"] = rustinel_version
-        
+        if os_type is not None:
+            params["os"] = os_type
+
         resp = self._request("GET", "/packs/device/available", params=params)
         resp.raise_for_status()
-        logger.info("Reported versions to backend: agent=%s, rustinel=%s", agent_version, rustinel_version)
+        logger.info(
+            "Reported versions to backend: agent=%s, rustinel=%s, os=%s",
+            agent_version,
+            rustinel_version,
+            os_type,
+        )
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Make an authenticated request, re-logging in on 401."""
@@ -80,6 +92,8 @@ class BackendClient:
         content: str,
         signature: str | None = None,
         severity: str | None = None,
+        rule_id: str | None = None,
+        rule_type: str | None = None,
     ) -> None:
         """Submit an encrypted log entry."""
         payload: dict[str, Any] = {
@@ -89,6 +103,10 @@ class BackendClient:
         }
         if severity is not None:
             payload["severity"] = severity
+        if rule_id is not None:
+            payload["rule_id"] = rule_id
+        if rule_type is not None:
+            payload["rule_type"] = rule_type
         self._request("POST", "/logs/", json=payload)
 
     def set_signing_key(self, public_key_b64: str) -> None:

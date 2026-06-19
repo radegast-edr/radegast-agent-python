@@ -30,7 +30,9 @@ class RadegastProcess:
     def start(self) -> None:
         """Start the radegast process in a background thread with auto-restart."""
         self._should_run = True
-        self._thread = threading.Thread(target=self._run_loop, daemon=True, name="radegast")
+        self._thread = threading.Thread(
+            target=self._run_loop, daemon=True, name="radegast"
+        )
         self._thread.start()
 
     def stop(self) -> None:

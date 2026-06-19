@@ -55,33 +55,59 @@ def check_and_perform_autoupdate() -> bool:
         remote_version = str(remote_data["project"]["version"])
         local_version = get_agent_version()
 
-        logger.info("Local version: %s, Remote version: %s", local_version, remote_version)
+        logger.info(
+            "Local version: %s, Remote version: %s", local_version, remote_version
+        )
 
         if is_newer_version(local_version, remote_version):
-            logger.info("Newer version %s is available (current: %s). Starting autoupdate...", remote_version, local_version)
+            logger.info(
+                "Newer version %s is available (current: %s). Starting autoupdate...",
+                remote_version,
+                local_version,
+            )
             try:
                 logger.info("Running: uv tool upgrade radegast-edr-agent")
-                subprocess.run(["uv", "tool", "upgrade", "radegast-edr-agent"], check=True)
+                subprocess.run(
+                    ["uv", "tool", "upgrade", "radegast-edr-agent"], check=True
+                )
                 logger.info("Successfully updated agent to version %s", remote_version)
                 return True
             except Exception as e:
-                logger.error("Failed to upgrade from PyPI: %s. Trying direct install from GitHub...", e)
+                logger.error(
+                    "Failed to upgrade from PyPI: %s. Trying direct install from GitHub...",
+                    e,
+                )
                 try:
                     cmd = ["uv", "tool", "install", "--upgrade", "radegast-edr-agent"]
                     logger.info("Running: %s", " ".join(cmd))
                     subprocess.run(cmd, check=True)
-                    logger.info("Successfully updated agent to version %s", remote_version)
+                    logger.info(
+                        "Successfully updated agent to version %s", remote_version
+                    )
                     return True
                 except Exception as ex:
-                    logger.error("Failed to install from PyPI: %s. Trying GitHub repository...", ex)
+                    logger.error(
+                        "Failed to install from PyPI: %s. Trying GitHub repository...",
+                        ex,
+                    )
                     try:
-                        cmd = ["uv", "tool", "install", "--upgrade", "https://github.com/radegast-edr/radegast-agent-python/archive/refs/heads/main.zip"]
+                        cmd = [
+                            "uv",
+                            "tool",
+                            "install",
+                            "--upgrade",
+                            "https://github.com/radegast-edr/radegast-agent-python/archive/refs/heads/main.zip",
+                        ]
                         logger.info("Running: %s", " ".join(cmd))
                         subprocess.run(cmd, check=True)
-                        logger.info("Successfully updated agent to version %s", remote_version)
+                        logger.info(
+                            "Successfully updated agent to version %s", remote_version
+                        )
                         return True
                     except Exception as ex2:
-                        logger.error("Autoupdate failed during uv command execution: %s", ex2)
+                        logger.error(
+                            "Autoupdate failed during uv command execution: %s", ex2
+                        )
         else:
             logger.info("Agent is up to date (version %s)", local_version)
     except Exception as e:

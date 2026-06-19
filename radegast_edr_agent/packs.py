@@ -78,7 +78,11 @@ class PackSyncer:
             active_pack_ids.add(pack_id)
 
             existing = self._manifest.get(version_id)
-            if existing and existing.get("pack_id") == pack_id and existing.get("version") == version:
+            if (
+                existing
+                and existing.get("pack_id") == pack_id
+                and existing.get("version") == version
+            ):
                 continue
 
             logger.info("Downloading pack '%s' version %s", pack_id, version)
@@ -138,7 +142,9 @@ class PackSyncer:
                         target = self._rules_dir / "ioc" / filename
                         new_ioc_files.add(filename)
                     else:
-                        target = self._rules_dir / rule_type / pack_id / Path(*parts[1:])
+                        target = (
+                            self._rules_dir / rule_type / pack_id / Path(*parts[1:])
+                        )
                 else:
                     ext = Path(filename).suffix.lower()
                     if ext in (".yml", ".yaml"):
@@ -158,7 +164,9 @@ class PackSyncer:
         return new_ioc_files
 
     def _update_ioc_registry_for_pack(self, pack_id: str, new_files: set[str]) -> None:
-        current_files = {name for name, packs in self._ioc_registry.items() if pack_id in packs}
+        current_files = {
+            name for name, packs in self._ioc_registry.items() if pack_id in packs
+        }
 
         for filename in new_files:
             packs = self._ioc_registry.setdefault(filename, [])
@@ -201,12 +209,13 @@ class PackSyncer:
 def ensure_placeholders_and_ioc(rules_dir: Path) -> None:
     """Ensure placeholder rules and required IoC files exist in the rules directory."""
     import sys
+
     product = "windows" if sys.platform.startswith("win") else "linux"
 
     sigma_dir = rules_dir / "sigma"
     sigma_dir.mkdir(parents=True, exist_ok=True)
     sigma_placeholder = sigma_dir / "placeholder.yml"
-    
+
     # Write rule with correct product for the platform and a command that never triggers
     sigma_placeholder.write_text(
         "title: Placeholder Rule\n"
@@ -229,7 +238,7 @@ def ensure_placeholders_and_ioc(rules_dir: Path) -> None:
         yara_placeholder.write_text(
             "rule PlaceholderRule {\n"
             "    meta:\n"
-            "        description = \"Placeholder rule to prevent reload failure\"\n"
+            '        description = "Placeholder rule to prevent reload failure"\n'
             "    condition:\n"
             "        false\n"
             "}\n"
