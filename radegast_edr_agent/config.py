@@ -14,7 +14,6 @@ class AgentSettings(BaseSettings):
     rules_dir: Path = Path("./rules")
     alerts_dir: Path = Path("./logs")
     alerts_filename: str = "alerts.json"
-    start_rustinel: bool = False
     send_severity: bool = True
     send_rule_id: bool = True
 

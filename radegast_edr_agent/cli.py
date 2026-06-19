@@ -18,7 +18,6 @@ from radegast_edr_agent.crypto import (
     load_signing_key,
 )
 from radegast_edr_agent.packs import PackSyncer, ensure_placeholders_and_ioc
-from radegast_edr_agent.process import RadegastProcess
 from radegast_edr_agent.tailer import AlertTailer
 from radegast_edr_agent.version import (
     get_agent_version,
@@ -81,24 +80,6 @@ def ensure_signing_key(client: BackendClient) -> None:
         client.set_signing_key(public_b64)
 
 
-def create_radegast_process() -> RadegastProcess | None:
-    """Create and start radegast when enabled by config."""
-    if not settings.start_rustinel:
-        logger.info(
-            "START_RUSTINEL is disabled; only checking alerts in %s",
-            settings.alerts_dir,
-        )
-        return None
-
-    radegast = RadegastProcess(
-        binary=settings.rustinel_binary,
-        rules_dir=settings.rules_dir,
-        alerts_dir=settings.alerts_dir,
-    )
-    radegast.start()
-    return radegast
-
-
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if args.version:
@@ -140,10 +121,7 @@ def main(argv: list[str] | None = None) -> None:
         syncer.sync()
     except Exception as e:
         logger.error("Initial pack sync failed: %s", e)
-        # Continue anyway — radegast can run without packs
-
-    # Start radegast process if configured
-    radegast = create_radegast_process()
+        # Continue anyway — rustinel can run without packs
 
     # Initialize alert tailer
     tailer = AlertTailer(
@@ -215,9 +193,6 @@ def main(argv: list[str] | None = None) -> None:
                     updated = check_and_perform_autoupdate()
                     if updated:
                         logger.info("Agent upgraded. Restarting process...")
-                        if radegast is not None:
-                            logger.info("Stopping radegast process...")
-                            radegast.stop()
                         client.close()
                         os.execvp(sys.argv[0], sys.argv)
                 except Exception as e:
@@ -227,9 +202,6 @@ def main(argv: list[str] | None = None) -> None:
 
             time.sleep(POLL_INTERVAL)
     finally:
-        if radegast is not None:
-            logger.info("Stopping radegast process...")
-            radegast.stop()
         client.close()
         logger.info("Agent stopped")
 

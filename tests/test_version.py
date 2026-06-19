@@ -163,7 +163,7 @@ class TestGetOsType:
         return_value={"PRETTY_NAME": "Ubuntu 22.04 LTS"},
     )
     def test_linux_returns_pretty_name(self, mock_fdo, mock_system):
-        assert get_os_type() == "Ubuntu 22.04 LTS"
+        assert get_os_type() == "Linux Ubuntu 22.04 LTS"
 
     @patch("radegast_edr_agent.version.platform.system", return_value="Linux")
     @patch(

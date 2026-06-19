@@ -8,11 +8,6 @@ from radegast_edr_agent.autoupdate import (
     is_newer_version,
     parse_version,
 )
-from radegast_edr_agent.config import settings
-
-
-def test_default_start_rustinel_is_false() -> None:
-    assert settings.start_rustinel is False
 
 
 class TestParseVersion:
@@ -134,29 +129,6 @@ def test_check_and_perform_autoupdate_all_fail(
     assert mock_run.call_count == 3
 
 
-class TestCreateRadegastProcess:
-    def test_skips_when_disabled(self, monkeypatch) -> None:
-        monkeypatch.setattr(cli.settings, "start_rustinel", False)
-        with patch("radegast_edr_agent.cli.RadegastProcess") as mock_radegast:
-            radegast = cli.create_radegast_process()
-        assert radegast is None
-        mock_radegast.assert_not_called()
-
-    def test_starts_when_enabled(self, monkeypatch) -> None:
-        monkeypatch.setattr(cli.settings, "start_rustinel", True)
-        with patch("radegast_edr_agent.cli.RadegastProcess") as mock_radegast:
-            mock_instance = mock_radegast.return_value
-            radegast = cli.create_radegast_process()
-
-        mock_radegast.assert_called_once_with(
-            binary=settings.rustinel_binary,
-            rules_dir=settings.rules_dir,
-            alerts_dir=settings.alerts_dir,
-        )
-        mock_instance.start.assert_called_once()
-        assert radegast is mock_instance
-
-
 def test_main_prints_version(capsys) -> None:
     cli.main(["--version"])
     captured = capsys.readouterr()
@@ -167,7 +139,6 @@ def test_main_prints_version(capsys) -> None:
 @patch("radegast_edr_agent.cli.ensure_signing_key")
 @patch("radegast_edr_agent.cli.load_signing_key")
 @patch("radegast_edr_agent.cli.PackSyncer")
-@patch("radegast_edr_agent.cli.create_radegast_process")
 @patch("radegast_edr_agent.cli.AlertTailer")
 @patch("radegast_edr_agent.cli.check_and_perform_autoupdate")
 @patch("radegast_edr_agent.cli.time.time")
@@ -177,7 +148,6 @@ def test_main_loop_triggers_autoupdate(
     mock_time,
     mock_check_update,
     mock_tailer,
-    mock_create_proc,
     mock_syncer,
     mock_load_key,
     mock_ensure_key,

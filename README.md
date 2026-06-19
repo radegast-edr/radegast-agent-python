@@ -37,7 +37,6 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 | `RADEGAST_AGENT_RULES_DIR`                | `./rules`                                                   | Base directory for extracted rules                                                 |
 | `RADEGAST_AGENT_ALERTS_DIR`               | `./logs`                                                    | Directory containing alert files                                                   |
 | `RADEGAST_AGENT_ALERTS_FILENAME`          | `alerts.json`                                               | Alert file base name                                                               |
-| `RADEGAST_AGENT_START_RUSTINEL`           | `false`                                                     | If `true`, start the local `rustinel` process; otherwise only tail alerts          |
 | `RADEGAST_AGENT_SEND_SEVERITY`            | `true`                                                      | If `true`, parse the severity of the alert and send it unencrypted in the request  |
 | `RADEGAST_AGENT_SEND_RULE_ID`             | `true`                                                      | If `true`, parse `rule.id` from the alert and sends it unencrypted in the request  |
 | `RADEGAST_AGENT_SYNC_INTERVAL`            | `300`                                                       | Seconds between pack sync checks                                                   |
@@ -48,7 +47,7 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 
 ### Notes
 
-- When `RADEGAST_AGENT_START_RUSTINEL=false`, the agent does not launch the local `rustinel` process and only monitors the configured `alerts_dir`.
+- The agent does not launch `rustinel` — it must be started separately. The agent only tails alerts from the configured `alerts_dir`.
 - If `RADEGAST_AGENT_SIGNING_KEY_PATH` is unset, it defaults to `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_key`.
 - IOC files are merged into `rules/ioc/` and an ownership registry is kept in `rules/ioc/ioc_packs.json`.
 
