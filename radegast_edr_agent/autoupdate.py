@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -44,6 +45,51 @@ def is_newer_version(current: str, remote: str) -> bool:
         return remote != current
 
 
+def find_uv() -> str | None:
+    """Locate the ``uv`` binary, even when ``PATH`` is minimal (e.g. systemd services).
+
+    Search order:
+    1. ``shutil.which("uv")`` — works when PATH is set correctly.
+    2. ``UV_TOOL_BIN_DIR`` env var — set by uv; points to the tool bin directory,
+       so ``uv`` itself lives in the parent directory's ``bin/`` or alongside it.
+    3. Common user-local install paths derived from ``$HOME`` and ``$CARGO_HOME``.
+
+    Returns the absolute path string, or ``None`` if uv cannot be found.
+    """
+    # 1. Standard PATH lookup
+    uv = shutil.which("uv")
+    if uv:
+        return uv
+
+    home = Path(os.path.expanduser("~"))
+
+    # 2. uv sets UV_TOOL_BIN_DIR to e.g. ~/.local/bin when running as a tool;
+    #    the uv binary itself lives in that same directory.
+    tool_bin_dir = os.environ.get("UV_TOOL_BIN_DIR")
+    if tool_bin_dir:
+        candidate = Path(tool_bin_dir) / "uv"
+        if candidate.exists():
+            return str(candidate)
+
+    # 3. Hardcoded well-known locations (mirrors the install script's get_uv_path())
+    uv_name = "uv.exe" if sys.platform == "win32" else "uv"
+    candidates = [
+        home / ".local" / "bin" / uv_name,
+        home / ".cargo" / "bin" / uv_name,
+    ]
+
+    # Also check CARGO_HOME if set
+    cargo_home = os.environ.get("CARGO_HOME")
+    if cargo_home:
+        candidates.append(Path(cargo_home) / "bin" / uv_name)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    return None
+
+
 def detect_project_root() -> Path | None:
     """Return the uv project root if the agent is running as a uv project dependency.
 
@@ -81,27 +127,59 @@ def detect_project_root() -> Path | None:
     return None
 
 
+def _upgrade_via_pip(remote_version: str) -> bool:
+    """Upgrade using ``pip`` when uv is not available.
+
+    Uses ``sys.executable -m pip`` so it always targets the exact same
+    Python environment the agent is running in.
+    """
+    logger.info(
+        "uv not found — falling back to pip: %s -m pip install --upgrade %s",
+        sys.executable,
+        PACKAGE_NAME,
+    )
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE_NAME],
+        check=True,
+    )
+    logger.info("Successfully updated agent to version %s via pip", remote_version)
+    return True
+
+
 def _do_upgrade(remote_version: str) -> bool:
-    """Perform the actual upgrade, choosing the right uv command based on install mode."""
+    """Perform the actual upgrade, choosing the right command based on install mode."""
+    uv = find_uv()
     project_root = detect_project_root()
+
+    if uv is None:
+        if project_root is not None:
+            # uv project mode but no uv — can't safely update pyproject.toml
+            logger.error(
+                "uv not found and running as a uv project dependency; "
+                "cannot upgrade automatically. Please install uv or upgrade manually."
+            )
+            return False
+        # uv tool mode but no uv — use pip as fallback
+        return _upgrade_via_pip(remote_version)
 
     if project_root is not None:
         logger.info(
             "Running as uv project dependency (root: %s). "
-            "Upgrading via: uv add %s --upgrade",
+            "Upgrading via: %s add %s --upgrade",
             project_root,
+            uv,
             PACKAGE_NAME,
         )
         subprocess.run(
-            ["uv", "add", PACKAGE_NAME, "--upgrade"],
+            [uv, "add", PACKAGE_NAME, "--upgrade"],
             check=True,
             cwd=str(project_root),
         )
     else:
         logger.info(
-            "Running as uv tool. Upgrading via: uv tool upgrade %s", PACKAGE_NAME
+            "Running as uv tool. Upgrading via: %s tool upgrade %s", uv, PACKAGE_NAME
         )
-        subprocess.run(["uv", "tool", "upgrade", PACKAGE_NAME], check=True)
+        subprocess.run([uv, "tool", "upgrade", PACKAGE_NAME], check=True)
 
     logger.info("Successfully updated agent to version %s", remote_version)
     return True
@@ -111,7 +189,8 @@ def check_and_perform_autoupdate() -> bool:
     """Check PyPI for a newer version and upgrade if one is available.
 
     Automatically detects whether the agent is installed as a ``uv tool`` or as a
-    dependency inside a ``uv`` project and runs the appropriate upgrade command.
+    dependency inside a ``uv`` project, then picks the appropriate upgrade command.
+    Falls back to ``pip`` when ``uv`` cannot be located in the environment.
 
     Returns:
         bool: True if an upgrade was performed successfully, False otherwise.
@@ -140,7 +219,7 @@ def check_and_perform_autoupdate() -> bool:
         return _do_upgrade(remote_version)
 
     except subprocess.CalledProcessError as e:
-        logger.error("Autoupdate failed (uv returned non-zero exit code): %s", e)
+        logger.error("Autoupdate command failed (non-zero exit code): %s", e)
     except Exception as e:
         logger.error("Autoupdate failed: %s", e)
     return False
