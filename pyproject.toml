@@ -1,6 +1,6 @@
 [project]
 name = "radegast-edr-agent"
-version = "0.3.1"
+version = "0.4.0"
 description = "Agent wrapper for radegast EDR — syncs detection packs and forwards encrypted alerts"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -33,4 +33,15 @@ packages = ["radegast_edr_agent"]
 dev = [
     "radegast-edr-agent[dev]",
     "ruff>=0.15.17",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
 ]

@@ -39,6 +39,9 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 | `RADEGAST_AGENT_ALERTS_FILENAME`          | `alerts.json`                                               | Alert file base name                                                               |
 | `RADEGAST_AGENT_SEND_SEVERITY`            | `true`                                                      | If `true`, parse the severity of the alert and send it unencrypted in the request  |
 | `RADEGAST_AGENT_SEND_RULE_ID`             | `true`                                                      | If `true`, parse `rule.id` from the alert and sends it unencrypted in the request  |
+| `RADEGAST_AGENT_SEND_EXCLUDED_BY`         | `true`                                                      | If `true`, send the exclusion ID for soft exclusions unencrypted in the request     |
+| `RADEGAST_AGENT_MAX_LOG_SIZE_MB`          | `10`                                                        | Maximum size of the rustinel log file in MB before rotation                        |
+| `RADEGAST_AGENT_MAX_LOG_AGE_DAYS`         | `720`                                                       | Maximum age of rotated rustinel log archives in days before deletion               |
 | `RADEGAST_AGENT_SYNC_INTERVAL`            | `300`                                                       | Seconds between pack sync checks                                                   |
 | `RADEGAST_AGENT_AUTOUPDATE_INITIAL_DELAY` | `300` (5 minutes)                                           | Seconds until first autoupdate check after startup                                 |
 | `RADEGAST_AGENT_AUTOUPDATE_INTERVAL`      | `86400` (24 hours)                                          | Seconds between subsequent autoupdate checks                                       |

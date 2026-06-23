@@ -70,14 +70,14 @@ class ExclusionManager:
                 return disk_exclusions
             return []
 
-    def is_excluded(self, alert: dict[str, Any]) -> bool:
+    def check_exclusion(self, alert: dict[str, Any]) -> tuple[str | None, int | None]:
         """Check if an alert matches any exclusion.
 
-        Returns True if the alert should be excluded (matches any exclusion query).
-        Returns False if the alert should be processed.
+        Returns a tuple of (exclusion_type, exclusion_id) if a match is found.
+        Returns (None, None) if no exclusion matches.
         """
         if not self._exclusions:
-            return False
+            return None, None
 
         for exclusion in self._exclusions:
             query = exclusion.get("jsonata_query", "")
@@ -87,14 +87,16 @@ class ExclusionManager:
             try:
                 expression = Jsonata(query)
                 result = expression.evaluate(alert)
-                # If the query returns a truthy value, the alert is excluded
+                # If the query returns a truthy value, the alert matches the exclusion
                 if result:
+                    exc_type = exclusion.get("exclusion_type", "hard")
                     logger.info(
-                        "Alert excluded by rule '%s' (id=%s)",
+                        "Alert matched %s exclusion rule '%s' (id=%s)",
+                        exc_type,
                         exclusion.get("name", "unnamed"),
                         exclusion.get("id", "unknown"),
                     )
-                    return True
+                    return exc_type, exclusion.get("id")
             except Exception as e:
                 logger.warning(
                     "Error evaluating exclusion '%s' (id=%s): %s",
@@ -105,4 +107,16 @@ class ExclusionManager:
                 # Continue to next exclusion even if this one fails
                 continue
 
-        return False
+        return None, None
+
+    def is_excluded(self, alert: dict[str, Any]) -> bool:
+        """Check if an alert matches any exclusion.
+
+        Returns True if the alert should be excluded (matches any exclusion query).
+        Returns False if the alert should be processed.
+        """
+        exc_type, _ = self.check_exclusion(alert)
+        # Note: Historically, is_excluded was only for hard exclusions (which filter out completely)
+        # but here we preserve it for any matched exclusions (or we can return True only if hard,
+        # but calling check_exclusion directly in tailer is cleaner).
+        return exc_type is not None

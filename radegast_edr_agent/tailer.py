@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+import zipfile
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,7 @@ class AlertTailer:
         send_severity: bool = True,
         send_rule_id: bool = True,
         enable_exclusions: bool = True,
+        send_excluded_by: bool = True,
     ):
         self._client = client
         self._signing_key = signing_key
@@ -44,6 +46,7 @@ class AlertTailer:
         self._send_severity = send_severity
         self._send_rule_id = send_rule_id
         self._enable_exclusions = enable_exclusions
+        self._send_excluded_by = send_excluded_by
         self._offset_path = state_dir / "tail_offset.json"
         self._sent_hashes_path = state_dir / "sent_alert_hashes.json"
         self._encryption_keys: list[str] = []
@@ -138,10 +141,7 @@ class AlertTailer:
     def _refresh_keys(self) -> None:
         """Fetch encryption keys from the backend if stale."""
         now = time.time()
-        if (
-            now - self._keys_last_fetched < KEYS_REFRESH_INTERVAL
-            and self._encryption_keys
-        ):
+        if now - self._keys_last_fetched < KEYS_REFRESH_INTERVAL and self._encryption_keys:
             pass  # Will still refresh exclusions if needed
         else:
             try:
@@ -154,9 +154,7 @@ class AlertTailer:
                         len(self._encryption_keys),
                     )
                 else:
-                    logger.warning(
-                        "No encryption keys available — logs will not be forwarded"
-                    )
+                    logger.warning("No encryption keys available — logs will not be forwarded")
             except Exception as e:
                 logger.error("Failed to refresh encryption keys: %s", e)
 
@@ -184,9 +182,7 @@ class AlertTailer:
         current_inode = os.stat(alert_file).st_ino
         if self._current_file != alert_file or self._current_inode != current_inode:
             if self._current_file and self._current_file != alert_file:
-                logger.info(
-                    "Alert file rotated: %s → %s", self._current_file, alert_file
-                )
+                logger.info("Alert file rotated: %s → %s", self._current_file, alert_file)
             self._current_file = alert_file
             self._current_inode = current_inode
             self._offset = 0
@@ -244,9 +240,7 @@ class AlertTailer:
             alert = json.loads(line)
             timestamp_str = alert.get("@timestamp")
             if timestamp_str:
-                alert_time = datetime.fromisoformat(
-                    timestamp_str.replace("Z", "+00:00")
-                )
+                alert_time = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
             else:
                 alert_time = datetime.now(timezone.utc)
             if self._send_severity:
@@ -265,9 +259,7 @@ class AlertTailer:
                                 (73, "high"),
                                 (99, "critical"),
                             ]
-                            severity = min(levels, key=lambda pair: abs(val - pair[0]))[
-                                1
-                            ]
+                            severity = min(levels, key=lambda pair: abs(val - pair[0]))[1]
                         except (ValueError, TypeError):
                             pass
             if self._send_rule_id:
@@ -280,10 +272,17 @@ class AlertTailer:
             alert_time = datetime.now(timezone.utc)
 
         # Check if this alert should be excluded
+        excluded_by = None
         if self._exclusion_manager and alert is not None:
-            if self._exclusion_manager.is_excluded(alert):
-                logger.info("Alert excluded by exclusion rule, not forwarding")
+            exc_type, exc_id = self._exclusion_manager.check_exclusion(alert)
+            if exc_type == "hard":
+                logger.info("Alert excluded by hard exclusion rule, not forwarding")
                 return False
+            elif exc_type == "soft":
+                logger.info("Alert matched soft exclusion, sending with informational severity")
+                severity = "informational"
+                if self._send_excluded_by:
+                    excluded_by = exc_id
 
         # Encrypt the alert content for all recipients
         encrypted = encrypt_for_recipients(line, self._encryption_keys)
@@ -299,7 +298,66 @@ class AlertTailer:
             severity=severity,
             rule_id=rule_id,
             rule_type=rule_type,
+            excluded_by=excluded_by,
         )
 
         self._append_sent_hash(alert_hash)
         return True
+
+
+def rotate_rustinel_logs(log_dir: Path, max_size_mb: int, max_age_days: int) -> None:
+    """Rotate active log/json files and clean up old zip files based on age."""
+    if not log_dir.exists() or not log_dir.is_dir():
+        return
+
+    # 1. Rotate large files
+    max_size_bytes = max_size_mb * 1024 * 1024
+    for file_path in log_dir.iterdir():
+        if not file_path.is_file():
+            continue
+        # Only rotate active log/json files
+        if file_path.suffix not in (".log", ".json"):
+            continue
+
+        try:
+            if file_path.stat().st_size > max_size_bytes:
+                # Find next index
+                idx = 1
+                while True:
+                    zip_path = log_dir / f"{file_path.name}.{idx}.zip"
+                    if not zip_path.exists():
+                        break
+                    idx += 1
+
+                # Move atomically and recreate empty file
+                temp_path = log_dir / f"{file_path.name}.tmp"
+                os.replace(file_path, temp_path)
+                file_path.touch()
+
+                # Create zip archive with max compression
+                with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
+                    zipf.write(temp_path, arcname=file_path.name)
+
+                temp_path.unlink()
+                logger.info("Rotated log file %s to %s", file_path.name, zip_path.name)
+        except Exception as e:
+            logger.error("Failed to rotate file %s: %s", file_path.name, e)
+
+    # 2. Clean up old archives
+    max_age_seconds = max_age_days * 24 * 3600
+    now = time.time()
+    for file_path in log_dir.iterdir():
+        if not file_path.is_file():
+            continue
+        if file_path.suffix == ".zip":
+            try:
+                age_seconds = now - file_path.stat().st_mtime
+                if age_seconds > max_age_seconds:
+                    file_path.unlink()
+                    logger.info(
+                        "Deleted expired log archive %s (age > %d days)",
+                        file_path.name,
+                        max_age_days,
+                    )
+            except Exception as e:
+                logger.error("Failed to delete expired log archive %s: %s", file_path.name, e)

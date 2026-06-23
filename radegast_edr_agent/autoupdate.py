@@ -117,9 +117,7 @@ def detect_project_root() -> Path | None:
             try:
                 content = pyproject.read_text(encoding="utf-8")
                 if PACKAGE_NAME in content:
-                    logger.debug(
-                        "Detected uv project root via pyproject.toml walk: %s", parent
-                    )
+                    logger.debug("Detected uv project root via pyproject.toml walk: %s", parent)
                     return parent
             except OSError:
                 pass
@@ -164,8 +162,7 @@ def _do_upgrade(remote_version: str) -> bool:
 
     if project_root is not None:
         logger.info(
-            "Running as uv project dependency (root: %s). "
-            "Upgrading via: %s add %s --upgrade",
+            "Running as uv project dependency (root: %s). Upgrading via: %s add %s --upgrade",
             project_root,
             uv,
             PACKAGE_NAME,
@@ -176,9 +173,7 @@ def _do_upgrade(remote_version: str) -> bool:
             cwd=str(project_root),
         )
     else:
-        logger.info(
-            "Running as uv tool. Upgrading via: %s tool upgrade %s", uv, PACKAGE_NAME
-        )
+        logger.info("Running as uv tool. Upgrading via: %s tool upgrade %s", uv, PACKAGE_NAME)
         subprocess.run([uv, "tool", "upgrade", PACKAGE_NAME], check=True)
 
     logger.info("Successfully updated agent to version %s", remote_version)
@@ -203,9 +198,7 @@ def check_and_perform_autoupdate() -> bool:
         remote_version = str(resp.json()["info"]["version"])
         local_version = get_agent_version()
 
-        logger.info(
-            "Local version: %s, Remote version: %s", local_version, remote_version
-        )
+        logger.info("Local version: %s, Remote version: %s", local_version, remote_version)
 
         if not is_newer_version(local_version, remote_version):
             logger.info("Agent is up to date (version %s)", local_version)

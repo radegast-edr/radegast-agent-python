@@ -1,14 +1,18 @@
 """Tests for the alert tailer."""
 
 import json
+import os
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from ssage import SSAGE
 
-from radegast_edr_agent.tailer import AlertTailer
+from radegast_edr_agent.crypto import generate_device_keypair, load_signing_key
+from radegast_edr_agent.tailer import AlertTailer, rotate_rustinel_logs
 
 
 @pytest.fixture
@@ -21,16 +25,12 @@ def setup_tailer():
         state_dir.mkdir()
 
         # Generate a signing key
-        from radegast_edr_agent.crypto import generate_device_keypair, load_signing_key
-
         key_path = Path(tmpdir) / "key"
         generate_device_keypair(key_path)
         signing_key = load_signing_key(key_path)
 
         client = MagicMock()
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": "", "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": "", "key_type": "regular"}]
 
         tailer = AlertTailer(
             client=client,
@@ -82,13 +82,10 @@ class TestAlertProcessing:
         tailer, client, alerts_dir = setup_tailer
 
         # Need real AGE keys for encryption
-        from ssage import SSAGE
 
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = {
             "@timestamp": "2026-01-01T12:00:00Z",
@@ -114,13 +111,9 @@ class TestAlertProcessing:
     def test_skips_already_processed_lines(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"})
         (alerts_dir / "alerts.json").write_text(alert + "\n")
@@ -135,18 +128,12 @@ class TestAlertProcessing:
     def test_skips_duplicate_alert_lines(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"})
-        duplicate = json.dumps(
-            {"rule.name": "Test", "@timestamp": "2026-01-01T12:00:00Z"}
-        )
+        duplicate = json.dumps({"rule.name": "Test", "@timestamp": "2026-01-01T12:00:00Z"})
         (alerts_dir / "alerts.json").write_text(alert + "\n" + duplicate + "\n")
 
         processed = tailer.poll()
@@ -156,17 +143,11 @@ class TestAlertProcessing:
     def test_persists_sent_hashes_across_restart(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
-        alert_line = json.dumps(
-            {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"}
-        )
+        alert_line = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"})
         (alerts_dir / "alerts.json").write_text(alert_line + "\n")
         tailer.poll()
 
@@ -189,18 +170,12 @@ class TestAlertProcessing:
     def test_processes_appended_lines(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert_file = alerts_dir / "alerts.json"
-        alert1 = json.dumps(
-            {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "First"}
-        )
+        alert1 = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "First"})
         alert_file.write_text(alert1 + "\n")
 
         tailer.poll()
@@ -208,9 +183,7 @@ class TestAlertProcessing:
 
         # Append a new line
         with open(alert_file, "a") as f:
-            alert2 = json.dumps(
-                {"@timestamp": "2026-01-01T12:01:00Z", "rule.name": "Second"}
-            )
+            alert2 = json.dumps({"@timestamp": "2026-01-01T12:01:00Z", "rule.name": "Second"})
             f.write(alert2 + "\n")
 
         processed = tailer.poll()
@@ -221,13 +194,9 @@ class TestOffsetPersistence:
     def test_saves_and_loads_offset(self, setup_tailer):
         tailer, client, alerts_dir = setup_tailer
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = json.dumps({"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"})
         (alerts_dir / "alerts.json").write_text(alert + "\n")
@@ -264,13 +233,9 @@ class TestSendSeverity:
         tailer, client, alerts_dir = setup_tailer
         tailer._send_severity = True
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = {
             "@timestamp": "2026-01-01T12:00:00Z",
@@ -292,13 +257,9 @@ class TestSendSeverity:
         tailer, client, alerts_dir = setup_tailer
         tailer._send_severity = False
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = {
             "@timestamp": "2026-01-01T12:00:00Z",
@@ -320,13 +281,9 @@ class TestSendSeverity:
         tailer, client, alerts_dir = setup_tailer
         tailer._send_severity = True
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         # Case 1: event.severity is 25 (closest to 21 -> "low")
         alert = {
@@ -358,13 +315,9 @@ class TestSendSeverity:
         tailer, client, alerts_dir = setup_tailer
         tailer._send_severity = True
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = {"@timestamp": "2026-01-01T12:00:00Z", "event": {"severity": 99}}
         (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
@@ -375,13 +328,9 @@ class TestSendSeverity:
         tailer, client, alerts_dir = setup_tailer
         tailer._send_severity = True
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         s = SSAGE(priv)
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = {
             "@timestamp": "2026-01-01T12:00:00Z",
@@ -395,7 +344,6 @@ class TestSendSeverity:
 
 class TestSendRuleId:
     def _make_ssage(self):
-        from ssage import SSAGE
 
         priv = SSAGE.generate_private_key()
         return SSAGE(priv)
@@ -404,9 +352,7 @@ class TestSendRuleId:
         tailer, client, alerts_dir = setup_tailer
         tailer._send_rule_id = True
         s = self._make_ssage()
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = {
             "@timestamp": "2026-01-01T12:00:00Z",
@@ -422,9 +368,7 @@ class TestSendRuleId:
         tailer, client, alerts_dir = setup_tailer
         tailer._send_rule_id = False
         s = self._make_ssage()
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = {
             "@timestamp": "2026-01-01T12:00:00Z",
@@ -440,9 +384,7 @@ class TestSendRuleId:
         tailer, client, alerts_dir = setup_tailer
         tailer._send_rule_id = True
         s = self._make_ssage()
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = {
             "@timestamp": "2026-01-01T12:00:00Z",
@@ -458,9 +400,7 @@ class TestSendRuleId:
         tailer, client, alerts_dir = setup_tailer
         tailer._send_rule_id = True
         s = self._make_ssage()
-        client.get_encryption_keys.return_value = [
-            {"user_id": 1, "public_key": s.public_key, "key_type": "regular"}
-        ]
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
 
         alert = {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"}
         (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
@@ -483,11 +423,7 @@ class TestExclusionBehavior:
     def test_excluded_alert_is_not_forwarded(self, setup_tailer):
         """An alert that matches an exclusion must be dropped, not submitted."""
         exclusions = [{"id": 1, "name": "Drop test", "jsonata_query": "some_query"}]
-        tailer, client, alerts_dir = self._make_tailer_with_exclusions(
-            setup_tailer, exclusions
-        )
-
-        from ssage import SSAGE
+        tailer, client, alerts_dir = self._make_tailer_with_exclusions(setup_tailer, exclusions)
 
         priv = SSAGE.generate_private_key()
         client.get_encryption_keys.return_value = [
@@ -497,8 +433,8 @@ class TestExclusionBehavior:
         alert = {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"}
         (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
 
-        # Patch is_excluded to return True without needing jsonata
-        tailer._exclusion_manager.is_excluded = MagicMock(return_value=True)
+        # Patch check_exclusion to return ('hard', 1) without needing jsonata
+        tailer._exclusion_manager.check_exclusion = MagicMock(return_value=("hard", 1))
         processed = tailer.poll()
 
         assert processed == 0
@@ -508,8 +444,6 @@ class TestExclusionBehavior:
         """An alert that does NOT match any exclusion must be submitted normally."""
         tailer, client, alerts_dir = self._make_tailer_with_exclusions(setup_tailer, [])
 
-        from ssage import SSAGE
-
         priv = SSAGE.generate_private_key()
         client.get_encryption_keys.return_value = [
             {"user_id": 1, "public_key": SSAGE(priv).public_key, "key_type": "regular"}
@@ -518,7 +452,7 @@ class TestExclusionBehavior:
         alert = {"@timestamp": "2026-01-01T12:00:00Z", "rule.name": "Test"}
         (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
 
-        tailer._exclusion_manager.is_excluded = MagicMock(return_value=False)
+        tailer._exclusion_manager.check_exclusion = MagicMock(return_value=(None, None))
         processed = tailer.poll()
 
         assert processed == 1
@@ -552,14 +486,9 @@ class TestExclusionBehavior:
         """When enable_exclusions=False the tailer has no exclusion manager."""
         tailer, client, alerts_dir = setup_tailer
         # Patch a fresh tailer with exclusions disabled
-        from radegast_edr_agent.tailer import AlertTailer
-        from radegast_edr_agent.crypto import load_signing_key
-        from pathlib import Path
-        import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
             key_path = Path(tmpdir) / "key"
-            from radegast_edr_agent.crypto import generate_device_keypair
 
             generate_device_keypair(key_path)
             signing_key = load_signing_key(key_path)
@@ -574,3 +503,136 @@ class TestExclusionBehavior:
         assert disabled_tailer._exclusion_manager is None
         # force_refresh should be a no-op without crashing
         disabled_tailer.force_refresh_exclusions()
+
+
+class TestSoftExclusions:
+    def _make_tailer_with_exclusions(self, setup_tailer, exclusions):
+        tailer, client, alerts_dir = setup_tailer
+        tailer._exclusion_manager._exclusions = exclusions
+        tailer._exclusion_manager._last_fetched = time.time()
+        return tailer, client, alerts_dir
+
+    def test_soft_excluded_alert_is_forwarded_with_informational_severity(self, setup_tailer):
+        """An alert that matches a soft exclusion must be forwarded with severity 'informational' and excluded_by ID."""
+        exclusions = [
+            {
+                "id": 42,
+                "name": "Soft test",
+                "jsonata_query": "some_query",
+                "exclusion_type": "soft",
+            }
+        ]
+        tailer, client, alerts_dir = self._make_tailer_with_exclusions(setup_tailer, exclusions)
+
+        priv = SSAGE.generate_private_key()
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": SSAGE(priv).public_key, "key_type": "regular"}
+        ]
+
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "rule.name": "Test",
+            "severity": "critical",
+        }
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+
+        # Patch check_exclusion to return ("soft", 42)
+        tailer._exclusion_manager.check_exclusion = MagicMock(return_value=("soft", 42))
+        processed = tailer.poll()
+
+        assert processed == 1
+        client.submit_log.assert_called_once()
+        _, kwargs = client.submit_log.call_args
+        assert kwargs["severity"] == "informational"
+        assert kwargs["excluded_by"] == 42
+
+    def test_soft_excluded_alert_without_excluded_by_id_when_disabled(self, setup_tailer):
+        """An alert that matches a soft exclusion must not submit excluded_by if send_excluded_by is False."""
+        exclusions = [
+            {
+                "id": 42,
+                "name": "Soft test",
+                "jsonata_query": "some_query",
+                "exclusion_type": "soft",
+            }
+        ]
+        tailer, client, alerts_dir = self._make_tailer_with_exclusions(setup_tailer, exclusions)
+        tailer._send_excluded_by = False
+
+        priv = SSAGE.generate_private_key()
+        client.get_encryption_keys.return_value = [
+            {"user_id": 1, "public_key": SSAGE(priv).public_key, "key_type": "regular"}
+        ]
+
+        alert = {
+            "@timestamp": "2026-01-01T12:00:00Z",
+            "rule.name": "Test",
+            "severity": "critical",
+        }
+        (alerts_dir / "alerts.json").write_text(json.dumps(alert) + "\n")
+
+        tailer._exclusion_manager.check_exclusion = MagicMock(return_value=("soft", 42))
+        processed = tailer.poll()
+
+        assert processed == 1
+        client.submit_log.assert_called_once()
+        _, kwargs = client.submit_log.call_args
+        assert kwargs["severity"] == "informational"
+        assert kwargs["excluded_by"] is None
+
+
+class TestLogRotation:
+    def test_rotate_rustinel_logs_under_limit(self, tmp_path):
+        log_file = tmp_path / "rustinel.log"
+        log_file.write_text("hello world")
+
+        rotate_rustinel_logs(tmp_path, max_size_mb=1, max_age_days=7)
+
+        assert log_file.exists()
+        assert log_file.read_text() == "hello world"
+        zip_files = list(tmp_path.glob("*.zip"))
+        assert len(zip_files) == 0
+
+    def test_rotate_rustinel_logs_over_limit(self, tmp_path):
+        log_file = tmp_path / "rustinel.log"
+        content = "a" * (2 * 1024 * 1024)  # 2 MB
+        log_file.write_text(content)
+
+        rotate_rustinel_logs(tmp_path, max_size_mb=1, max_age_days=7)
+
+        assert log_file.exists()
+        assert log_file.stat().st_size == 0
+
+        zip_files = list(tmp_path.glob("*.zip"))
+        assert len(zip_files) == 1
+        zip_file = zip_files[0]
+        assert zip_file.name == "rustinel.log.1.zip"
+
+        with zipfile.ZipFile(zip_file, "r") as zf:
+            assert zf.namelist() == ["rustinel.log"]
+            assert zf.read("rustinel.log").decode("utf-8") == content
+
+    def test_rotate_rustinel_logs_multiple_rotations(self, tmp_path):
+        log_file = tmp_path / "rustinel.log"
+
+        log_file.write_text("a" * (2 * 1024 * 1024))
+        rotate_rustinel_logs(tmp_path, max_size_mb=1, max_age_days=7)
+
+        log_file.write_text("b" * (2 * 1024 * 1024))
+        rotate_rustinel_logs(tmp_path, max_size_mb=1, max_age_days=7)
+
+        zip_files = sorted(list(tmp_path.glob("*.zip")), key=lambda p: p.name)
+        assert len(zip_files) == 2
+        assert zip_files[0].name == "rustinel.log.1.zip"
+        assert zip_files[1].name == "rustinel.log.2.zip"
+
+    def test_rotate_rustinel_logs_cleanup_old(self, tmp_path):
+        zip_file = tmp_path / "rustinel.log.1.zip"
+        zip_file.write_text("mock zip content")
+
+        old_time = time.time() - (10 * 24 * 3600)
+        os.utime(zip_file, (old_time, old_time))
+
+        rotate_rustinel_logs(tmp_path, max_size_mb=10, max_age_days=5)
+
+        assert not zip_file.exists()

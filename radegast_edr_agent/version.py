@@ -91,9 +91,7 @@ def get_os_type() -> str:
     return system or "unknown"
 
 
-def report_versions_to_backend(
-    client: Any, agent_version: str, rustinel_version: str | None
-) -> None:
+def report_versions_to_backend(client: Any, agent_version: str, rustinel_version: str | None) -> None:
     """Report agent and rustinel versions, and OS type to the backend.
 
     Args:

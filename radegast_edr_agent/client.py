@@ -94,6 +94,7 @@ class BackendClient:
         severity: str | None = None,
         rule_id: str | None = None,
         rule_type: str | None = None,
+        excluded_by: int | None = None,
     ) -> None:
         """Submit an encrypted log entry."""
         payload: dict[str, Any] = {
@@ -107,6 +108,8 @@ class BackendClient:
             payload["rule_id"] = rule_id
         if rule_type is not None:
             payload["rule_type"] = rule_type
+        if excluded_by is not None:
+            payload["excluded_by"] = excluded_by
         self._request("POST", "/logs/", json=payload)
 
     def set_signing_key(self, public_key_b64: str) -> None:

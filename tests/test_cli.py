@@ -36,16 +36,12 @@ class TestIsNewerVersion:
 class TestFindUv:
     def test_finds_via_which(self, monkeypatch):
         """shutil.which succeeds → return immediately."""
-        monkeypatch.setattr(
-            "radegast_edr_agent.autoupdate.shutil.which", lambda _: "/usr/bin/uv"
-        )
+        monkeypatch.setattr("radegast_edr_agent.autoupdate.shutil.which", lambda _: "/usr/bin/uv")
         assert find_uv() == "/usr/bin/uv"
 
     def test_finds_via_tool_bin_dir(self, tmp_path, monkeypatch):
         """UV_TOOL_BIN_DIR set and uv binary exists there."""
-        monkeypatch.setattr(
-            "radegast_edr_agent.autoupdate.shutil.which", lambda _: None
-        )
+        monkeypatch.setattr("radegast_edr_agent.autoupdate.shutil.which", lambda _: None)
         uv_bin = tmp_path / "uv"
         uv_bin.touch()
         monkeypatch.setenv("UV_TOOL_BIN_DIR", str(tmp_path))
@@ -53,9 +49,7 @@ class TestFindUv:
 
     def test_finds_via_local_bin(self, tmp_path, monkeypatch):
         """~/.local/bin/uv exists."""
-        monkeypatch.setattr(
-            "radegast_edr_agent.autoupdate.shutil.which", lambda _: None
-        )
+        monkeypatch.setattr("radegast_edr_agent.autoupdate.shutil.which", lambda _: None)
         monkeypatch.delenv("UV_TOOL_BIN_DIR", raising=False)
         monkeypatch.delenv("CARGO_HOME", raising=False)
         local_bin = tmp_path / ".local" / "bin"
@@ -70,9 +64,7 @@ class TestFindUv:
 
     def test_finds_via_cargo_bin(self, tmp_path, monkeypatch):
         """~/.cargo/bin/uv exists (fallback after .local/bin)."""
-        monkeypatch.setattr(
-            "radegast_edr_agent.autoupdate.shutil.which", lambda _: None
-        )
+        monkeypatch.setattr("radegast_edr_agent.autoupdate.shutil.which", lambda _: None)
         monkeypatch.delenv("UV_TOOL_BIN_DIR", raising=False)
         monkeypatch.delenv("CARGO_HOME", raising=False)
         cargo_bin = tmp_path / ".cargo" / "bin"
@@ -87,9 +79,7 @@ class TestFindUv:
 
     def test_returns_none_when_not_found(self, tmp_path, monkeypatch):
         """uv not found anywhere → None."""
-        monkeypatch.setattr(
-            "radegast_edr_agent.autoupdate.shutil.which", lambda _: None
-        )
+        monkeypatch.setattr("radegast_edr_agent.autoupdate.shutil.which", lambda _: None)
         monkeypatch.delenv("UV_TOOL_BIN_DIR", raising=False)
         monkeypatch.delenv("CARGO_HOME", raising=False)
         monkeypatch.setattr(
@@ -165,18 +155,14 @@ def _pypi_mock(version: str) -> MagicMock:
 @patch("radegast_edr_agent.autoupdate.httpx.get")
 @patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
-def test_check_and_perform_autoupdate_no_update(
-    mock_run, mock_get_version, mock_get
-) -> None:
+def test_check_and_perform_autoupdate_no_update(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
     mock_get.return_value = _pypi_mock("0.1.0")
 
     updated = check_and_perform_autoupdate()
     assert updated is False
     mock_run.assert_not_called()
-    mock_get.assert_called_once_with(
-        "https://pypi.org/pypi/radegast-edr-agent/json", timeout=15.0
-    )
+    mock_get.assert_called_once_with("https://pypi.org/pypi/radegast-edr-agent/json", timeout=15.0)
 
 
 @patch("radegast_edr_agent.autoupdate.find_uv", return_value="/home/user/.local/bin/uv")
@@ -276,17 +262,13 @@ def test_check_and_perform_autoupdate_upgrade_fails(
 
     updated = check_and_perform_autoupdate()
     assert updated is False
-    mock_run.assert_called_once_with(
-        ["/usr/local/bin/uv", "tool", "upgrade", "radegast-edr-agent"], check=True
-    )
+    mock_run.assert_called_once_with(["/usr/local/bin/uv", "tool", "upgrade", "radegast-edr-agent"], check=True)
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
 @patch("radegast_edr_agent.autoupdate.get_agent_version")
 @patch("radegast_edr_agent.autoupdate.subprocess.run")
-def test_check_and_perform_autoupdate_pypi_error(
-    mock_run, mock_get_version, mock_get
-) -> None:
+def test_check_and_perform_autoupdate_pypi_error(mock_run, mock_get_version, mock_get) -> None:
     mock_get_version.return_value = "0.1.0"
     mock_get.side_effect = Exception("Network error")
 

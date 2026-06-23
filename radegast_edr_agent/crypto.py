@@ -26,9 +26,7 @@ def generate_device_keypair(key_path: Path) -> str:
     Returns the base64-encoded public key for registration with the backend.
     """
     private_key = Ed25519PrivateKey.generate()
-    private_bytes = private_key.private_bytes(
-        Encoding.Raw, PrivateFormat.Raw, NoEncryption()
-    )
+    private_bytes = private_key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
     public_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
 
     key_path.parent.mkdir(parents=True, exist_ok=True)

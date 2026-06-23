@@ -145,9 +145,7 @@ class TestSubmitLog:
                 url="http://localhost:8000/logs/",
                 json={"id": 1},
             )
-            client.submit_log(
-                time=now, content="encrypted", signature="sig123", severity="critical"
-            )
+            client.submit_log(time=now, content="encrypted", signature="sig123", severity="critical")
             mock.assert_called_once()
             call_kwargs = mock.call_args
             payload = call_kwargs.kwargs["json"]

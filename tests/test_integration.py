@@ -1,19 +1,18 @@
+import json
 import os
+import sqlite3
 import subprocess
 import sys
-import time
 import tempfile
-import sqlite3
-import json
+import time
 from pathlib import Path
+
 import httpx
 
 
 def run_command(cmd, cwd=None, env=None):
     print(f"Running command: {' '.join(cmd) if isinstance(cmd, list) else cmd}")
-    res = subprocess.run(
-        cmd, cwd=cwd, capture_output=True, text=True, env=env, check=False
-    )
+    res = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env, check=False)
     print("STDOUT:")
     print(res.stdout)
     print("STDERR:")
@@ -139,20 +138,14 @@ def test_agent_integration():
             time.sleep(1)
 
         if not healthy:
-            raise RuntimeError(
-                "Backend server failed to start or respond to health check."
-            )
+            raise RuntimeError("Backend server failed to start or respond to health check.")
 
         # Register user via API
         print("Registering user...")
         email = "agent-integration@example.com"
         password = "IntegrationPass123!"
-        with httpx.Client(
-            base_url="http://127.0.0.1:8081/api/v1", follow_redirects=True
-        ) as client:
-            resp = client.post(
-                "/auth/register", json={"email": email, "password": password}
-            )
+        with httpx.Client(base_url="http://127.0.0.1:8081/api/v1", follow_redirects=True) as client:
+            resp = client.post("/auth/register", json={"email": email, "password": password})
             if resp.status_code != 200:
                 raise RuntimeError(f"Registration failed: {resp.text}")
 
@@ -160,9 +153,7 @@ def test_agent_integration():
         print("Promoting and verifying user directly in SQLite...")
         conn = sqlite3.connect(db_file)
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE users SET verified = 1, role = 'admin' WHERE email = ?;", (email,)
-        )
+        cursor.execute("UPDATE users SET verified = 1, role = 'admin' WHERE email = ?;", (email,))
         conn.commit()
         conn.close()
 
@@ -183,13 +174,9 @@ def test_agent_integration():
         group_id = None
         rule_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
-        with httpx.Client(
-            base_url="http://127.0.0.1:8081/api/v1", follow_redirects=True
-        ) as client:
+        with httpx.Client(base_url="http://127.0.0.1:8081/api/v1", follow_redirects=True) as client:
             # Login
-            resp = client.post(
-                "/auth/login", json={"email": email, "password": password}
-            )
+            resp = client.post("/auth/login", json={"email": email, "password": password})
             if resp.status_code != 200:
                 raise RuntimeError(f"Login failed: {resp.text}")
 
@@ -212,9 +199,7 @@ def test_agent_integration():
             group_id = resp.json()[0]["id"]
 
             # Create Pack
-            resp = client.post(
-                "/packs/", json={"name": "test-pack", "description": "test rules"}
-            )
+            resp = client.post("/packs/", json={"name": "test-pack", "description": "test rules"})
             pack_id = resp.json()["id"]
 
             # Create in-memory zip for pack
@@ -236,9 +221,7 @@ detection:
   condition: selection
 level: low
 """
-            with zipfile.ZipFile(
-                zip_buffer, "a", zipfile.ZIP_DEFLATED, False
-            ) as zip_file:
+            with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
                 zip_file.writestr("sigma/test_rule.yml", rule_content.strip())
             zip_bytes = zip_buffer.getvalue()
 
@@ -256,9 +239,7 @@ level: low
             )
 
             # Create device
-            resp = client.post(
-                "/devices/", json={"name": "agent-test-device", "group_id": group_id}
-            )
+            resp = client.post("/devices/", json={"name": "agent-test-device", "group_id": group_id})
             device_data = resp.json()
             device_token = device_data["token"]
             device_id = device_data["id"]
@@ -273,9 +254,7 @@ level: low
         agent_env["RADEGAST_AGENT_RULES_DIR"] = str(agent_rules_dir)
         agent_env["RADEGAST_AGENT_ALERTS_DIR"] = str(agent_alerts_dir)
         agent_env["RADEGAST_AGENT_STATE_DIR"] = str(agent_state_dir)
-        agent_env["RADEGAST_AGENT_RUSTINEL_BINARY"] = (
-            "true"  # Bypass binary path check since we mock
-        )
+        agent_env["RADEGAST_AGENT_RUSTINEL_BINARY"] = "true"  # Bypass binary path check since we mock
 
         agent_process = subprocess.Popen(
             ["uv", "run", "python", "-m", "radegast_edr_agent.cli"],
@@ -325,10 +304,7 @@ level: low
                 if resp.status_code == 200:
                     logs = resp.json()
                     for log in logs:
-                        if (
-                            log.get("rule_id") == rule_id
-                            and log.get("device_id") == device_id
-                        ):
+                        if log.get("rule_id") == rule_id and log.get("device_id") == device_id:
                             print("SUCCESS: Alert successfully received at backend!")
                             alert_received = True
                             break

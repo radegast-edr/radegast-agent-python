@@ -18,7 +18,7 @@ from radegast_edr_agent.crypto import (
     load_signing_key,
 )
 from radegast_edr_agent.packs import PackSyncer, ensure_placeholders_and_ioc
-from radegast_edr_agent.tailer import AlertTailer
+from radegast_edr_agent.tailer import AlertTailer, rotate_rustinel_logs
 from radegast_edr_agent.version import (
     get_agent_version,
     get_rustinel_version,
@@ -105,9 +105,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     # Report versions to backend on startup
-    report_versions_to_backend(
-        client, get_agent_version(), get_rustinel_version(settings.rustinel_binary)
-    )
+    report_versions_to_backend(client, get_agent_version(), get_rustinel_version(settings.rustinel_binary))
 
     # Ensure we have a signing key registered
     ensure_signing_key(client)
@@ -133,6 +131,7 @@ def main(argv: list[str] | None = None) -> None:
         send_severity=settings.send_severity,
         send_rule_id=settings.send_rule_id,
         enable_exclusions=True,
+        send_excluded_by=settings.send_excluded_by,
     )
 
     # Initial exclusion load — runs immediately so exclusions are ready before the
@@ -154,9 +153,11 @@ def main(argv: list[str] | None = None) -> None:
     # Main loop
     last_sync = time.time()
     last_autoupdate = time.time()
+    last_log_rotation = 0
     first_autoupdate_done = False
     logger.info(
-        "Agent running — polling alerts every %ds, syncing packs every %ds, first autoupdate check after %ds, then every %ds",
+        "Agent running — polling alerts every %ds, syncing packs every %ds, "
+        "first autoupdate check after %ds, then every %ds",
         POLL_INTERVAL,
         settings.sync_interval,
         settings.agent_autoupdate_initial_delay,
@@ -172,6 +173,19 @@ def main(argv: list[str] | None = None) -> None:
                 logger.error("Alert poll error: %s", e)
 
             now = time.time()
+
+            # Periodic log rotation
+            if now - last_log_rotation >= 60:
+                try:
+                    rotate_rustinel_logs(
+                        settings.alerts_dir,
+                        settings.max_log_size_mb,
+                        settings.max_log_age_days,
+                    )
+                except Exception as e:
+                    logger.error("Log rotation error: %s", e)
+                last_log_rotation = now
+
             # Periodic pack sync — also force-refresh exclusions so group config stays in sync
             if now - last_sync >= settings.sync_interval:
                 try:

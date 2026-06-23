@@ -1,3 +1,4 @@
+import subprocess
 from unittest.mock import MagicMock, patch
 
 from radegast_edr_agent.version import (
@@ -76,11 +77,7 @@ class TestGetRustinelVersion:
         mock_path.return_value = mock_path_instance
         mock_access.return_value = True
 
-        import subprocess
-
-        error = subprocess.CalledProcessError(
-            1, "rustinel", stderr="Error: unknown flag"
-        )
+        error = subprocess.CalledProcessError(1, "rustinel", stderr="Error: unknown flag")
         error.stderr = "Error: unknown flag"
         mock_run.side_effect = error
 
@@ -97,8 +94,6 @@ class TestGetRustinelVersion:
         mock_path_instance.__str__.return_value = "/path/to/rustinel"
         mock_path.return_value = mock_path_instance
         mock_access.return_value = True
-
-        import subprocess
 
         mock_run.side_effect = subprocess.TimeoutExpired("rustinel", 10)
 
@@ -129,9 +124,7 @@ class TestReportVersionsToBackend:
         mock_client = MagicMock()
 
         report_versions_to_backend(mock_client, "1.0.0", "0.5.0")
-        mock_client.report_versions.assert_called_once_with(
-            "1.0.0", "0.5.0", os_type="Ubuntu 22.04 LTS"
-        )
+        mock_client.report_versions.assert_called_once_with("1.0.0", "0.5.0", os_type="Ubuntu 22.04 LTS")
         mock_logger.error.assert_not_called()
 
     @patch("radegast_edr_agent.version.get_os_type", return_value="Ubuntu 22.04 LTS")
@@ -140,9 +133,7 @@ class TestReportVersionsToBackend:
         mock_client = MagicMock()
 
         report_versions_to_backend(mock_client, "1.0.0", None)
-        mock_client.report_versions.assert_called_once_with(
-            "1.0.0", None, os_type="Ubuntu 22.04 LTS"
-        )
+        mock_client.report_versions.assert_called_once_with("1.0.0", None, os_type="Ubuntu 22.04 LTS")
         mock_logger.error.assert_not_called()
 
     @patch("radegast_edr_agent.version.get_os_type", return_value="Ubuntu 22.04 LTS")
