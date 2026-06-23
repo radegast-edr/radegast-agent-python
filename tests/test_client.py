@@ -221,6 +221,23 @@ class TestSetSigningKey:
             )
 
 
+class TestSetEncryptionKey:
+    def test_registers_enc_key(self, client):
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/devices/encryption-key",
+                json={"message": "ok"},
+            )
+            client.set_encryption_key("age1publickey")
+            mock.assert_called_once_with(
+                "POST",
+                "/devices/encryption-key",
+                json={"encryption_public_key": "age1publickey"},
+            )
+
+
 class TestReportVersions:
     def test_reports_both_versions(self, client):
         with patch.object(client._client, "request") as mock:

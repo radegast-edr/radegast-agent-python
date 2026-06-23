@@ -25,11 +25,14 @@ class AgentSettings(BaseSettings):
     agent_autoupdate_initial_delay: int = 300  # seconds until first autoupdate check
     agent_autoupdate_interval: int = 86400  # seconds between subsequent autoupdate checks
     signing_key_path: Path | None = None
+    encryption_key_path: Path | None = None
     state_dir: Path = Path("./.radegast-agent")
 
     def model_post_init(self, __context: Any) -> None:
         if self.signing_key_path is None:
             self.signing_key_path = self.state_dir / "device_key"
+        if self.encryption_key_path is None:
+            self.encryption_key_path = self.state_dir / "device_enc_key"
 
 
 settings = AgentSettings()

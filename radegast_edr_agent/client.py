@@ -121,5 +121,14 @@ class BackendClient:
         )
         logger.info("Signing key registered with backend")
 
+    def set_encryption_key(self, public_key_age: str) -> None:
+        """Register the device's AGE encryption public key."""
+        self._request(
+            "POST",
+            "/devices/encryption-key",
+            json={"encryption_public_key": public_key_age},
+        )
+        logger.info("Encryption key registered with backend")
+
     def close(self) -> None:
         self._client.close()

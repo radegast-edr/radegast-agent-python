@@ -14,7 +14,10 @@ from radegast_edr_agent.client import BackendClient
 from radegast_edr_agent.config import settings
 from radegast_edr_agent.crypto import (
     generate_device_keypair,
+    generate_encryption_keypair,
+    get_encryption_public_key,
     get_public_key_b64,
+    load_encryption_key,
     load_signing_key,
 )
 from radegast_edr_agent.packs import PackSyncer, ensure_placeholders_and_ioc
@@ -80,6 +83,22 @@ def ensure_signing_key(client: BackendClient) -> None:
         client.set_signing_key(public_b64)
 
 
+def ensure_encryption_key(client: BackendClient) -> None:
+    """Load or generate the device encryption keypair, registering with the backend if new."""
+    key_path = settings.encryption_key_path
+    if key_path is None:
+        return
+
+    if key_path.exists():
+        private_key = load_encryption_key(key_path)
+        public_key = get_encryption_public_key(private_key)
+        logger.info("Loaded existing encryption key: %s...", public_key[:16])
+    else:
+        logger.info("No encryption key found, generating new keypair")
+        public_key = generate_encryption_keypair(key_path)
+        client.set_encryption_key(public_key)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if args.version:
@@ -109,6 +128,9 @@ def main(argv: list[str] | None = None) -> None:
 
     # Ensure we have a signing key registered
     ensure_signing_key(client)
+
+    # Ensure we have an encryption key registered
+    ensure_encryption_key(client)
 
     # Load signing key for alert signing
     signing_key = load_signing_key(settings.signing_key_path)

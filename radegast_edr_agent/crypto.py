@@ -38,10 +38,38 @@ def generate_device_keypair(key_path: Path) -> str:
     return public_b64
 
 
+def generate_encryption_keypair(key_path: Path) -> str:
+    """Generate an AGE keypair and save the private key to disk.
+
+    Returns the AGE public key (age1...) for registration with the backend.
+    """
+    private_key = SSAGE.generate_private_key()
+    s = SSAGE(private_key)
+    public_key = s.public_key
+
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    key_path.write_text(private_key)
+    key_path.chmod(0o600)
+
+    logger.info("Generated AGE keypair, public key: %s...", public_key[:16])
+    return public_key
+
+
 def load_signing_key(key_path: Path) -> Ed25519PrivateKey:
     """Load the Ed25519 private key from disk."""
     private_bytes = key_path.read_bytes()
     return Ed25519PrivateKey.from_private_bytes(private_bytes)
+
+
+def load_encryption_key(key_path: Path) -> str:
+    """Load the AGE private key from disk."""
+    return key_path.read_text().strip()
+
+
+def get_encryption_public_key(private_key: str) -> str:
+    """Extract AGE public key from a loaded private key."""
+    s = SSAGE(private_key)
+    return s.public_key
 
 
 def get_public_key_b64(private_key: Ed25519PrivateKey) -> str:

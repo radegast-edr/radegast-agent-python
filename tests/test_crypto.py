@@ -6,7 +6,10 @@ from pathlib import Path
 from radegast_edr_agent.crypto import (
     encrypt_for_recipients,
     generate_device_keypair,
+    generate_encryption_keypair,
+    get_encryption_public_key,
     get_public_key_b64,
+    load_encryption_key,
     load_signing_key,
     sign_message,
 )
@@ -86,3 +89,19 @@ def test_age_encryption_single_recipient():
 
     decrypted = s.decrypt(encrypted)
     assert decrypted == plaintext
+
+
+def test_encryption_keypair_generation_and_loading():
+    """Test AGE encryption keypair generation, storage, and loading."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        key_path = Path(tmpdir) / "test_enc_key"
+        public_key = generate_encryption_keypair(key_path)
+
+        assert key_path.exists()
+        assert len(public_key) > 0
+        assert public_key.startswith("age1")
+
+        # Load and verify
+        private_key = load_encryption_key(key_path)
+        loaded_public = get_encryption_public_key(private_key)
+        assert loaded_public == public_key

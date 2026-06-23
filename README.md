@@ -46,6 +46,7 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 | `RADEGAST_AGENT_AUTOUPDATE_INITIAL_DELAY` | `300` (5 minutes)                                           | Seconds until first autoupdate check after startup                                 |
 | `RADEGAST_AGENT_AUTOUPDATE_INTERVAL`      | `86400` (24 hours)                                          | Seconds between subsequent autoupdate checks                                       |
 | `RADEGAST_AGENT_SIGNING_KEY_PATH`         | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_key` | Path to the device signing keypair                                                 |
+| `RADEGAST_AGENT_ENCRYPTION_KEY_PATH`      | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_enc_key` | Path to the device encryption keypair                                              |
 | `RADEGAST_AGENT_STATE_DIR`                | `./.radegast-agent`                                         | Local state directory for manifests, offsets, and the default signing key location |
 
 ### Notes

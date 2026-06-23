@@ -285,6 +285,7 @@ def test_main_prints_version(capsys) -> None:
 
 @patch("radegast_edr_agent.cli.BackendClient")
 @patch("radegast_edr_agent.cli.ensure_signing_key")
+@patch("radegast_edr_agent.cli.ensure_encryption_key")
 @patch("radegast_edr_agent.cli.load_signing_key")
 @patch("radegast_edr_agent.cli.PackSyncer")
 @patch("radegast_edr_agent.cli.AlertTailer")
@@ -298,6 +299,7 @@ def test_main_loop_triggers_autoupdate(
     mock_tailer,
     mock_syncer,
     mock_load_key,
+    mock_ensure_enc_key,
     mock_ensure_key,
     mock_client,
     monkeypatch,
@@ -317,3 +319,53 @@ def test_main_loop_triggers_autoupdate(
 
     mock_check_update.assert_called_once()
     mock_execvp.assert_called_once()
+
+
+def test_ensure_signing_key_existing(tmp_path, monkeypatch) -> None:
+    key_path = tmp_path / "signing_key"
+    from radegast_edr_agent.crypto import generate_device_keypair
+
+    generate_device_keypair(key_path)
+
+    monkeypatch.setattr(cli.settings, "signing_key_path", key_path)
+
+    mock_client = MagicMock()
+    cli.ensure_signing_key(mock_client)
+
+    mock_client.set_signing_key.assert_not_called()
+
+
+def test_ensure_signing_key_new(tmp_path, monkeypatch) -> None:
+    key_path = tmp_path / "signing_key"
+    monkeypatch.setattr(cli.settings, "signing_key_path", key_path)
+
+    mock_client = MagicMock()
+    cli.ensure_signing_key(mock_client)
+
+    mock_client.set_signing_key.assert_called_once()
+    assert key_path.exists()
+
+
+def test_ensure_encryption_key_existing(tmp_path, monkeypatch) -> None:
+    key_path = tmp_path / "enc_key"
+    from radegast_edr_agent.crypto import generate_encryption_keypair
+
+    generate_encryption_keypair(key_path)
+
+    monkeypatch.setattr(cli.settings, "encryption_key_path", key_path)
+
+    mock_client = MagicMock()
+    cli.ensure_encryption_key(mock_client)
+
+    mock_client.set_encryption_key.assert_not_called()
+
+
+def test_ensure_encryption_key_new(tmp_path, monkeypatch) -> None:
+    key_path = tmp_path / "enc_key"
+    monkeypatch.setattr(cli.settings, "encryption_key_path", key_path)
+
+    mock_client = MagicMock()
+    cli.ensure_encryption_key(mock_client)
+
+    mock_client.set_encryption_key.assert_called_once()
+    assert key_path.exists()
