@@ -24,6 +24,7 @@ class AgentSettings(BaseSettings):
     sync_interval: int = 300  # seconds between pack sync checks
     agent_autoupdate_initial_delay: int = 300  # seconds until first autoupdate check
     agent_autoupdate_interval: int = 86400  # seconds between subsequent autoupdate checks
+    init_wait_seconds: int = 90  # seconds to wait for backend to re-encrypt exclusions on new key registration
     signing_key_path: Path | None = None
     encryption_key_path: Path | None = None
     state_dir: Path = Path("./.radegast-agent")

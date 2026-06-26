@@ -137,11 +137,11 @@ def main(argv: list[str] | None = None) -> None:
     # Ensure we have an encryption key registered
     new_encryption_key = ensure_encryption_key(client)
 
-    # If a new encryption key was just registered, wait 90 seconds for the backend
+    # If a new encryption key was just registered, wait a configurable number of seconds for the backend
     # to re-encrypt exclusions before downloading them
-    if new_encryption_key:
-        logger.info("Waiting 90 seconds for backend to re-encrypt exclusions...")
-        time.sleep(90)
+    if new_encryption_key and settings.init_wait_seconds > 0:
+        logger.info("Waiting %d seconds for backend to re-encrypt exclusions...", settings.init_wait_seconds)
+        time.sleep(settings.init_wait_seconds)
 
     # Load signing key for alert signing
     signing_key = load_signing_key(settings.signing_key_path)

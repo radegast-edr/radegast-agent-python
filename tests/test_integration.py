@@ -262,6 +262,7 @@ level: low
         agent_env["RADEGAST_AGENT_ALERTS_DIR"] = str(agent_alerts_dir)
         agent_env["RADEGAST_AGENT_STATE_DIR"] = str(agent_state_dir)
         agent_env["RADEGAST_AGENT_RUSTINEL_BINARY"] = "true"  # Bypass binary path check since we mock
+        agent_env["RADEGAST_AGENT_INIT_WAIT_SECONDS"] = "0"
 
         agent_process = subprocess.Popen(
             ["uv", "run", "python", "-m", "radegast_edr_agent.cli"],

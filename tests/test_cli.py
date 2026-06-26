@@ -308,6 +308,7 @@ def test_main_loop_triggers_autoupdate(
     monkeypatch.setattr(cli.settings, "agent_autoupdate_initial_delay", 90000)
     monkeypatch.setattr(cli.settings, "agent_autoupdate_interval", 86400)
     monkeypatch.setattr(cli.settings, "sync_interval", 300)
+    monkeypatch.setattr(cli.settings, "init_wait_seconds", 0)
 
     mock_time.side_effect = [0.0, 0.0, 0.0, 95000.0, 95000.0] + [195000.0] * 10
     mock_check_update.return_value = True

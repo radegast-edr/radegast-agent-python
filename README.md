@@ -29,25 +29,26 @@ radegast-edr-agent --version
 
 The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 
-| Variable                                  | Default                                                     | Description                                                                        |
-|-------------------------------------------|-------------------------------------------------------------|------------------------------------------------------------------------------------|
-| `RADEGAST_AGENT_BACKEND_URL`              | `http://localhost:8000/api/v1`                              | Backend API URL, including the default `/api/v1` path                              |
-| `RADEGAST_AGENT_DEVICE_TOKEN`             | ``                                                          | Device token for authenticating to the backend                                     |
-| `RADEGAST_AGENT_RUSTINEL_BINARY`          | `./rustinel`                                                | Local path to the `rustinel` binary                                                |
-| `RADEGAST_AGENT_RULES_DIR`                | `./rules`                                                   | Base directory for extracted rules                                                 |
-| `RADEGAST_AGENT_ALERTS_DIR`               | `./logs`                                                    | Directory containing alert files                                                   |
-| `RADEGAST_AGENT_ALERTS_FILENAME`          | `alerts.json`                                               | Alert file base name                                                               |
-| `RADEGAST_AGENT_SEND_SEVERITY`            | `true`                                                      | If `true`, parse the severity of the alert and send it unencrypted in the request  |
-| `RADEGAST_AGENT_SEND_RULE_ID`             | `true`                                                      | If `true`, parse `rule.id` from the alert and sends it unencrypted in the request  |
-| `RADEGAST_AGENT_SEND_EXCLUDED_BY`         | `true`                                                      | If `true`, send the exclusion ID for soft exclusions unencrypted in the request     |
-| `RADEGAST_AGENT_MAX_LOG_SIZE_MB`          | `10`                                                        | Maximum size of the rustinel log file in MB before rotation                        |
-| `RADEGAST_AGENT_MAX_LOG_AGE_DAYS`         | `720`                                                       | Maximum age of rotated rustinel log archives in days before deletion               |
-| `RADEGAST_AGENT_SYNC_INTERVAL`            | `300`                                                       | Seconds between pack sync checks                                                   |
-| `RADEGAST_AGENT_AUTOUPDATE_INITIAL_DELAY` | `300` (5 minutes)                                           | Seconds until first autoupdate check after startup                                 |
-| `RADEGAST_AGENT_AUTOUPDATE_INTERVAL`      | `86400` (24 hours)                                          | Seconds between subsequent autoupdate checks                                       |
-| `RADEGAST_AGENT_SIGNING_KEY_PATH`         | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_key` | Path to the device signing keypair                                                 |
+| Variable                                  | Default                                                         | Description                                                                        |
+|-------------------------------------------|-----------------------------------------------------------------|------------------------------------------------------------------------------------|
+| `RADEGAST_AGENT_BACKEND_URL`              | `http://localhost:8000/api/v1`                                  | Backend API URL, including the default `/api/v1` path                              |
+| `RADEGAST_AGENT_DEVICE_TOKEN`             | ``                                                              | Device token for authenticating to the backend                                     |
+| `RADEGAST_AGENT_RUSTINEL_BINARY`          | `./rustinel`                                                    | Local path to the `rustinel` binary                                                |
+| `RADEGAST_AGENT_RULES_DIR`                | `./rules`                                                       | Base directory for extracted rules                                                 |
+| `RADEGAST_AGENT_ALERTS_DIR`               | `./logs`                                                        | Directory containing alert files                                                   |
+| `RADEGAST_AGENT_ALERTS_FILENAME`          | `alerts.json`                                                   | Alert file base name                                                               |
+| `RADEGAST_AGENT_SEND_SEVERITY`            | `true`                                                          | If `true`, parse the severity of the alert and send it unencrypted in the request  |
+| `RADEGAST_AGENT_SEND_RULE_ID`             | `true`                                                          | If `true`, parse `rule.id` from the alert and sends it unencrypted in the request  |
+| `RADEGAST_AGENT_SEND_EXCLUDED_BY`         | `true`                                                          | If `true`, send the exclusion ID for soft exclusions unencrypted in the request    |
+| `RADEGAST_AGENT_MAX_LOG_SIZE_MB`          | `10`                                                            | Maximum size of the rustinel log file in MB before rotation                        |
+| `RADEGAST_AGENT_MAX_LOG_AGE_DAYS`         | `720`                                                           | Maximum age of rotated rustinel log archives in days before deletion               |
+| `RADEGAST_AGENT_SYNC_INTERVAL`            | `300`                                                           | Seconds between pack sync checks                                                   |
+| `RADEGAST_AGENT_AUTOUPDATE_INITIAL_DELAY` | `300` (5 minutes)                                               | Seconds until first autoupdate check after startup                                 |
+| `RADEGAST_AGENT_AUTOUPDATE_INTERVAL`      | `86400` (24 hours)                                              | Seconds between subsequent autoupdate checks                                       |
+| `RADEGAST_AGENT_INIT_WAIT_SECONDS`        | `90`                                                            | Seconds to wait for backend to re-encrypt exclusions on new key registration       |
+| `RADEGAST_AGENT_SIGNING_KEY_PATH`         | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_key`     | Path to the device signing keypair                                                 |
 | `RADEGAST_AGENT_ENCRYPTION_KEY_PATH`      | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_enc_key` | Path to the device encryption keypair                                              |
-| `RADEGAST_AGENT_STATE_DIR`                | `./.radegast-agent`                                         | Local state directory for manifests, offsets, and the default signing key location |
+| `RADEGAST_AGENT_STATE_DIR`                | `./.radegast-agent`                                             | Local state directory for manifests, offsets, and the default signing key location |
 
 ### Notes
 
