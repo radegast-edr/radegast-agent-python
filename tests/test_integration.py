@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import sqlite3
@@ -5,9 +6,12 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+from ssage import SSAGE
 
 
 def run_command(cmd, cwd=None, env=None):
@@ -158,8 +162,6 @@ def test_agent_integration():
         conn.close()
 
         # Generate valid AGE keys using ssage
-        from ssage import SSAGE
-
         private_key = SSAGE.generate_private_key()
         s = SSAGE(private_key)
         main_pub = s.public_key
@@ -203,9 +205,6 @@ def test_agent_integration():
             pack_id = resp.json()["id"]
 
             # Create in-memory zip for pack
-            import io
-            import zipfile
-
             zip_buffer = io.BytesIO()
             rule_content = f"""
 title: Test Rule
@@ -281,7 +280,6 @@ level: low
 
         # Simulate alert log
         print("Simulating alert log writing...")
-        from datetime import datetime, timezone
 
         current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         alert_data = {

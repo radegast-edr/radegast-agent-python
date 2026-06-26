@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
 import os
 import platform
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -15,13 +17,9 @@ logger = logging.getLogger(__name__)
 def get_agent_version() -> str:
     """Get the agent version from package metadata or pyproject.toml."""
     try:
-        from importlib.metadata import version
-
-        return version("radegast-edr-agent")
+        return importlib.metadata.version("radegast-edr-agent")
     except Exception:
         # Fallback: try to read from pyproject.toml (for development)
-        import tomllib
-
         pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
         with pyproject_path.open("rb") as fh:
             data = tomllib.load(fh)

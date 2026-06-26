@@ -1,9 +1,13 @@
 """Tests for crypto module."""
 
+import base64
 import tempfile
 from pathlib import Path
 
+from ssage import SSAGE
+
 from radegast_edr_agent.crypto import (
+    decrypt_with_key,
     encrypt_for_recipients,
     generate_device_keypair,
     generate_encryption_keypair,
@@ -32,7 +36,6 @@ def test_keypair_generation_and_loading():
 
 def test_sign_and_verify():
     """Test Ed25519 signing produces a valid base64 signature."""
-    import base64
 
     with tempfile.TemporaryDirectory() as tmpdir:
         key_path = Path(tmpdir) / "test_key"
@@ -54,7 +57,6 @@ def test_sign_and_verify():
 
 def test_age_encryption():
     """Test AGE encryption to multiple recipients."""
-    from ssage import SSAGE
 
     # Generate two recipient keypairs
     priv1 = SSAGE.generate_private_key()
@@ -78,7 +80,6 @@ def test_age_encryption():
 
 def test_age_encryption_single_recipient():
     """Test AGE encryption with a single recipient."""
-    from ssage import SSAGE
 
     priv = SSAGE.generate_private_key()
     s = SSAGE(priv)
@@ -105,3 +106,16 @@ def test_encryption_keypair_generation_and_loading():
         private_key = load_encryption_key(key_path)
         loaded_public = get_encryption_public_key(private_key)
         assert loaded_public == public_key
+
+
+def test_decrypt_with_key():
+    """Test decrypt_with_key correctly decrypts AGE ciphertext."""
+
+    priv = SSAGE.generate_private_key()
+    s = SSAGE(priv)
+
+    plaintext = "hello age decryption"
+    ciphertext = s.encrypt(plaintext)
+
+    decrypted = decrypt_with_key(ciphertext, priv)
+    assert decrypted == plaintext

@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +12,7 @@ from radegast_edr_agent.autoupdate import (
     is_newer_version,
     parse_version,
 )
+from radegast_edr_agent.crypto import generate_device_keypair, generate_encryption_keypair
 
 
 class TestParseVersion:
@@ -256,8 +258,6 @@ def test_check_and_perform_autoupdate_upgrade_fails(
     mock_get_version.return_value = "0.1.0"
     mock_get.return_value = _pypi_mock("0.2.0")
 
-    import subprocess
-
     mock_run.side_effect = subprocess.CalledProcessError(1, "uv")
 
     updated = check_and_perform_autoupdate()
@@ -323,7 +323,6 @@ def test_main_loop_triggers_autoupdate(
 
 def test_ensure_signing_key_existing(tmp_path, monkeypatch) -> None:
     key_path = tmp_path / "signing_key"
-    from radegast_edr_agent.crypto import generate_device_keypair
 
     generate_device_keypair(key_path)
 
@@ -348,7 +347,6 @@ def test_ensure_signing_key_new(tmp_path, monkeypatch) -> None:
 
 def test_ensure_encryption_key_existing(tmp_path, monkeypatch) -> None:
     key_path = tmp_path / "enc_key"
-    from radegast_edr_agent.crypto import generate_encryption_keypair
 
     generate_encryption_keypair(key_path)
 

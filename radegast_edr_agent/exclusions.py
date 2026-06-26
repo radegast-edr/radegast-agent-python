@@ -11,6 +11,8 @@ from typing import Any
 from jsonata import Jsonata
 
 from radegast_edr_agent.client import BackendClient
+from radegast_edr_agent.config import settings
+from radegast_edr_agent.crypto import decrypt_with_key, load_encryption_key
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,66 @@ class ExclusionManager:
         cache_path = self._state_dir / "exclusions.json"
         cache_path.write_text(json.dumps(exclusions, indent=2))
 
+    def _decrypt_exclusions(self, exclusions: list[dict[str, Any]], group_keys: dict[str, Any]) -> list[dict[str, Any]]:
+        """Decrypt E2EE exclusions using the local encryption key and group keys."""
+        if not settings.encryption_key_path or not settings.encryption_key_path.exists():
+            logger.warning("Agent encryption key file does not exist, cannot decrypt exclusions")
+            return exclusions
+
+        try:
+            device_priv_key = load_encryption_key(settings.encryption_key_path)
+        except Exception as e:
+            logger.error("Failed to load device encryption key: %s", e)
+            return exclusions
+
+        decrypted = []
+        for e in exclusions:
+            if not e.get("encrypted"):
+                decrypted.append(e)
+                continue
+
+            group_id = str(e.get("device_group_id"))
+            g_key_info = group_keys.get(group_id)
+            if not g_key_info:
+                logger.warning(
+                    "Group keys missing for group_id %s, skipping encrypted exclusion %s",
+                    group_id,
+                    e.get("id"),
+                )
+                continue
+
+            enc_group_priv_key = g_key_info.get("private_key")
+            if not enc_group_priv_key:
+                logger.warning("Encrypted group private key missing for group_id %s", group_id)
+                continue
+
+            try:
+                # Decrypt the group private key using device private key
+                group_priv_key = decrypt_with_key(enc_group_priv_key, device_priv_key)
+            except Exception as err:
+                logger.error("Failed to decrypt group private key for group_id %s: %s", group_id, err)
+                continue
+
+            try:
+                # Decrypt the exclusion name and jsonata query
+                decrypted_name = decrypt_with_key(e["name"], group_priv_key)
+                decrypted_query = decrypt_with_key(e["jsonata_query"], group_priv_key)
+
+                # Copy the exclusion and update decrypted fields
+                e_dec = dict(e)
+                e_dec["name"] = decrypted_name
+                e_dec["jsonata_query"] = decrypted_query
+                decrypted.append(e_dec)
+            except Exception as err:
+                logger.error(
+                    "Failed to decrypt exclusion fields for exclusion %s: %s",
+                    e.get("id"),
+                    err,
+                )
+                continue
+
+        return decrypted
+
     def refresh(self) -> list[dict[str, Any]]:
         """Refresh exclusions from the backend. Returns the updated list."""
         now = time.time()
@@ -50,13 +112,18 @@ class ExclusionManager:
             return self._exclusions
 
         try:
-            exclusions = self._client.get_exclusions()
-            self._exclusions = exclusions
+            data = self._client.get_exclusions()
+            exclusions = data.get("exclusions", [])
+            group_keys = data.get("group_keys", {})
+
+            decrypted = self._decrypt_exclusions(exclusions, group_keys)
+
+            self._exclusions = decrypted
             self._last_fetched = now
-            self._last_json = json.dumps(exclusions, sort_keys=True)
-            self._save_to_disk(exclusions)
-            logger.info("Refreshed %d exclusion(s) from backend", len(exclusions))
-            return exclusions
+            self._last_json = json.dumps(decrypted, sort_keys=True)
+            self._save_to_disk(decrypted)
+            logger.info("Refreshed %d exclusion(s) from backend", len(decrypted))
+            return decrypted
         except Exception as e:
             logger.error("Failed to refresh exclusions: %s", e)
             # Return cached exclusions if we have them

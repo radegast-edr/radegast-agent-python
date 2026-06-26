@@ -100,3 +100,9 @@ def encrypt_for_recipients(plaintext: str, public_keys: list[str]) -> str:
     s = SSAGE(public_key=public_keys[0])
     additional = public_keys[1:] if len(public_keys) > 1 else None
     return s.encrypt(plaintext, additional_recipients=additional)
+
+
+def decrypt_with_key(ciphertext: str, private_key: str) -> str:
+    """Decrypt a ciphertext using the AGE private key."""
+    s = SSAGE(private_key)
+    return s.decrypt(ciphertext)

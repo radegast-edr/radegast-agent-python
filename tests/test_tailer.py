@@ -11,7 +11,13 @@ from unittest.mock import MagicMock
 import pytest
 from ssage import SSAGE
 
-from radegast_edr_agent.crypto import generate_device_keypair, load_signing_key
+from radegast_edr_agent.config import settings
+from radegast_edr_agent.crypto import (
+    encrypt_for_recipients,
+    generate_device_keypair,
+    generate_encryption_keypair,
+    load_signing_key,
+)
 from radegast_edr_agent.tailer import AlertTailer, rotate_rustinel_logs
 
 
@@ -461,7 +467,7 @@ class TestExclusionBehavior:
     def test_force_refresh_exclusions_resets_timer(self, setup_tailer):
         """force_refresh_exclusions() bypasses the rate-limit by zeroing _last_fetched."""
         tailer, client, alerts_dir = setup_tailer
-        client.get_exclusions.return_value = []
+        client.get_exclusions.return_value = {"exclusions": [], "group_keys": {}}
 
         # Simulate a recent refresh so normal refresh() would be a no-op
         tailer._exclusion_manager._last_fetched = time.time()
@@ -476,7 +482,7 @@ class TestExclusionBehavior:
         """force_refresh_exclusions() replaces in-memory exclusions with backend response."""
         tailer, client, alerts_dir = setup_tailer
         new_exclusions = [{"id": 42, "name": "New rule", "jsonata_query": "true"}]
-        client.get_exclusions.return_value = new_exclusions
+        client.get_exclusions.return_value = {"exclusions": new_exclusions, "group_keys": {}}
 
         tailer.force_refresh_exclusions()
 
@@ -503,6 +509,56 @@ class TestExclusionBehavior:
         assert disabled_tailer._exclusion_manager is None
         # force_refresh should be a no-op without crashing
         disabled_tailer.force_refresh_exclusions()
+
+    def test_refresh_decrypts_e2ee_exclusions(self, setup_tailer):
+        """refresh() successfully decrypts E2EE exclusions."""
+        tailer, client, alerts_dir = setup_tailer
+
+        with tempfile.TemporaryDirectory() as enc_tmpdir:
+            enc_key_path = Path(enc_tmpdir) / "test_enc_key"
+            device_pub = generate_encryption_keypair(enc_key_path)
+
+            # Generate group encryption key
+            group_priv = SSAGE.generate_private_key()
+            group_pub = SSAGE(group_priv).public_key
+
+            # Encrypt group private key for device public key
+            enc_group_priv = encrypt_for_recipients(group_priv, [device_pub])
+
+            # Prepare encrypted exclusion fields
+            enc_name = encrypt_for_recipients("E2EE exclusion", [group_pub])
+            enc_query = encrypt_for_recipients("rule.name = 'e2ee'", [group_pub])
+
+            encrypted_exclusions = [
+                {
+                    "id": 99,
+                    "name": enc_name,
+                    "jsonata_query": enc_query,
+                    "device_group_id": 12,
+                    "exclusion_type": "soft",
+                    "encrypted": True,
+                }
+            ]
+
+            group_keys = {"12": {"public_key": group_pub, "private_key": enc_group_priv}}
+
+            client.get_exclusions.return_value = {"exclusions": encrypted_exclusions, "group_keys": group_keys}
+
+            # Patch settings.encryption_key_path and execute
+            orig_path = settings.encryption_key_path
+            settings.encryption_key_path = enc_key_path
+            try:
+                tailer.force_refresh_exclusions()
+            finally:
+                settings.encryption_key_path = orig_path
+
+        exclusions = tailer._exclusion_manager._exclusions
+        assert len(exclusions) == 1
+        assert exclusions[0]["id"] == 99
+        assert exclusions[0]["name"] == "E2EE exclusion"
+        assert exclusions[0]["jsonata_query"] == "rule.name = 'e2ee'"
+        assert exclusions[0]["exclusion_type"] == "soft"
+        assert exclusions[0]["encrypted"] is True
 
 
 class TestSoftExclusions:
