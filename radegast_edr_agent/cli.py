@@ -83,20 +83,25 @@ def ensure_signing_key(client: BackendClient) -> None:
         client.set_signing_key(public_b64)
 
 
-def ensure_encryption_key(client: BackendClient) -> None:
-    """Load or generate the device encryption keypair, registering with the backend if new."""
+def ensure_encryption_key(client: BackendClient) -> bool:
+    """Load or generate the device encryption keypair, registering with the backend if new.
+
+    Returns True if a new encryption key was generated and registered, False if loaded existing.
+    """
     key_path = settings.encryption_key_path
     if key_path is None:
-        return
+        return False
 
     if key_path.exists():
         private_key = load_encryption_key(key_path)
         public_key = get_encryption_public_key(private_key)
         logger.info("Loaded existing encryption key: %s...", public_key[:16])
+        return False
     else:
         logger.info("No encryption key found, generating new keypair")
         public_key = generate_encryption_keypair(key_path)
         client.set_encryption_key(public_key)
+        return True
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -130,7 +135,13 @@ def main(argv: list[str] | None = None) -> None:
     ensure_signing_key(client)
 
     # Ensure we have an encryption key registered
-    ensure_encryption_key(client)
+    new_encryption_key = ensure_encryption_key(client)
+
+    # If a new encryption key was just registered, wait 90 seconds for the backend
+    # to re-encrypt exclusions before downloading them
+    if new_encryption_key:
+        logger.info("Waiting 90 seconds for backend to re-encrypt exclusions...")
+        time.sleep(90)
 
     # Load signing key for alert signing
     signing_key = load_signing_key(settings.signing_key_path)

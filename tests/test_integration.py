@@ -247,6 +247,14 @@ level: low
 
         # Start agent CLI process pointing to our backend
         print("Starting python agent...")
+        # Pre-create a valid encryption key file so agent doesn't generate a new one
+        # (generating a new one would trigger a 90-second wait for backend to re-encrypt exclusions)
+        encryption_key_path = agent_state_dir / "device_enc_key"
+        encryption_key_path.parent.mkdir(parents=True, exist_ok=True)
+        # Generate a valid AGE private key
+        private_key = SSAGE.generate_private_key()
+        encryption_key_path.write_text(private_key)
+
         agent_env = os.environ.copy()
         agent_env["RADEGAST_AGENT_BACKEND_URL"] = "http://127.0.0.1:8081/api/v1"
         agent_env["RADEGAST_AGENT_DEVICE_TOKEN"] = device_token
