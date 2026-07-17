@@ -9,6 +9,8 @@ import signal
 import sys
 import time
 
+import tomlkit
+
 from radegast_edr_agent.autoupdate import check_and_perform_autoupdate
 from radegast_edr_agent.client import BackendClient
 from radegast_edr_agent.config import settings
@@ -104,6 +106,51 @@ def ensure_encryption_key(client: BackendClient) -> bool:
         return True
 
 
+def sync_active_response(client: BackendClient) -> None:
+    """Fetch active response settings from backend and sync to rustinel config.toml."""
+    try:
+        config = client.get_device_config()
+        enabled = config.get("response_enabled", False)
+        severity = config.get("response_min_severity", "critical")
+
+        config_path = settings.rustinel_config
+        logger.info(
+            "Syncing active response settings: enabled=%s, min_severity=%s to %s",
+            enabled,
+            severity,
+            config_path,
+        )
+
+        content = ""
+        if config_path.exists():
+            try:
+                content = config_path.read_text(encoding="utf-8")
+            except Exception as e:
+                logger.error("Failed to read existing rustinel config: %s", e)
+
+        try:
+            doc = tomlkit.parse(content)
+        except Exception as e:
+            logger.error("Failed to parse rustinel config as TOML: %s. Initializing empty config.", e)
+            doc = tomlkit.document()
+
+        if "response" not in doc:
+            doc["response"] = tomlkit.table()
+
+        doc["response"]["enabled"] = enabled
+        doc["response"]["prevention_enabled"] = enabled
+        doc["response"]["min_severity"] = severity.lower()
+
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+        except Exception as e:
+            logger.error("Failed to write active response settings to %s: %s", config_path, e)
+
+    except Exception as e:
+        logger.error("Failed to sync active response settings: %s", e)
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     if args.version:
@@ -153,6 +200,9 @@ def main(argv: list[str] | None = None) -> None:
     except Exception as e:
         logger.error("Initial pack sync failed: %s", e)
         # Continue anyway — rustinel can run without packs
+
+    # Sync active response configuration on startup
+    sync_active_response(client)
 
     # Initialize alert tailer
     tailer = AlertTailer(
@@ -225,6 +275,10 @@ def main(argv: list[str] | None = None) -> None:
                     syncer.sync()
                 except Exception as e:
                     logger.error("Pack sync error: %s", e)
+                try:
+                    sync_active_response(client)
+                except Exception as e:
+                    logger.error("Active response sync error: %s", e)
                 tailer.force_refresh_exclusions()
                 last_sync = now
 

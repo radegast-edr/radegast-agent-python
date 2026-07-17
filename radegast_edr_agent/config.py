@@ -28,6 +28,7 @@ class AgentSettings(BaseSettings):
     signing_key_path: Path | None = None
     encryption_key_path: Path | None = None
     state_dir: Path = Path("./.radegast-agent")
+    rustinel_config: Path = Path("config.toml")
 
     def model_post_init(self, __context: Any) -> None:
         if self.signing_key_path is None:

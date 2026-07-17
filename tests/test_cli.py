@@ -368,3 +368,66 @@ def test_ensure_encryption_key_new(tmp_path, monkeypatch) -> None:
 
     mock_client.set_encryption_key.assert_called_once()
     assert key_path.exists()
+
+
+def test_sync_active_response(tmp_path, monkeypatch) -> None:
+    config_path = tmp_path / "config.toml"
+    monkeypatch.setattr(cli.settings, "rustinel_config", config_path)
+
+    mock_client = MagicMock()
+    # 1. Sync when response is enabled
+    mock_client.get_device_config.return_value = {
+        "response_enabled": True,
+        "response_min_severity": "high",
+    }
+
+    cli.sync_active_response(mock_client)
+    assert config_path.exists()
+    content = config_path.read_text()
+    assert "[response]" in content
+    assert "enabled = true" in content
+    assert "prevention_enabled = true" in content
+    assert 'min_severity = "high"' in content
+
+    # 2. Sync when response is disabled
+    mock_client.get_device_config.return_value = {
+        "response_enabled": False,
+        "response_min_severity": "critical",
+    }
+    cli.sync_active_response(mock_client)
+    content = config_path.read_text()
+    assert "enabled = false" in content
+    assert "prevention_enabled = false" in content
+    assert 'min_severity = "critical"' in content
+
+    # 3. Verify it preserves other keys and comments
+    config_path.write_text("""# Global Scanner Config
+[scanner]
+sigma_enabled = true # rule scanning toggle
+
+# Active Response Config
+[response]
+# whether alerts are processed
+enabled = false
+prevention_enabled = false
+min_severity = "critical"
+
+[logging]
+level = "info"
+""")
+    mock_client.get_device_config.return_value = {
+        "response_enabled": True,
+        "response_min_severity": "medium",
+    }
+    cli.sync_active_response(mock_client)
+    content = config_path.read_text()
+    assert "[scanner]" in content
+    assert "sigma_enabled = true" in content
+    assert "[logging]" in content
+    assert 'level = "info"' in content
+    assert "enabled = true" in content
+    assert 'min_severity = "medium"' in content
+    assert "# Global Scanner Config" in content
+    assert "# rule scanning toggle" in content
+    assert "# Active Response Config" in content
+    assert "# whether alerts are processed" in content

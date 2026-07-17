@@ -673,6 +673,7 @@ dependencies = [
     { name = "jsonata-python" },
     { name = "pydantic-settings" },
     { name = "ssage" },
+    { name = "tomlkit" },
 ]
 
 [package.optional-dependencies]
@@ -698,6 +699,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.22.0" },
     { name = "ssage", specifier = ">=1.5.0" },
+    { name = "tomlkit", specifier = ">=0.12.4" },
 ]
 provides-extras = ["dev"]
 
@@ -778,6 +780,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3d/43/e0ff6eb6b76a80b5fc2a4c44e55bb9684e02c02026345361b1cf7206b94e/ssage-1.5.1.tar.gz", hash = "sha256:8364a904a26601b850639025ec3d4d768fc42d9772ae80c5867248a580759c81", size = 10663, upload-time = "2025-10-18T07:00:04.445Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/ff/1a41ecad13375196361ae7aa4eff41792830eb5cb26e066d3aca77f78846/ssage-1.5.1-py3-none-any.whl", hash = "sha256:42580b0e1a60a7e0bc3bb8230bd854e57811552fd68e1bdd309acc1709b0c4de", size = 11850, upload-time = "2025-10-18T07:00:03.057Z" },
+]
+
+[[package]]
+name = "tomlkit"
+version = "0.15.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/96/e07752635b98536177fa1f37671c8f3cdde2e724c6bcf6034b2cfb571565/tomlkit-0.15.1.tar.gz", hash = "sha256:e25bbf38843005246210a12982776f27f99cb9be67160e14434d0c0d21ee1e97", size = 180129, upload-time = "2026-07-17T01:48:04.562Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/bc/8c13eb66537dce1d2bd3a57132902f38d0e7f5bb46fa9f4daed9fe9d76ee/tomlkit-0.15.1-py3-none-any.whl", hash = "sha256:177a05aece5a8ca5266fd3c448abb47b8d352f09d477d3ca8332db4d89b24304", size = 49449, upload-time = "2026-07-17T01:48:05.728Z" },
 ]
 
 [[package]]

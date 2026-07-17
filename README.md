@@ -49,6 +49,7 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 | `RADEGAST_AGENT_SIGNING_KEY_PATH`         | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_key`     | Path to the device signing keypair                                                 |
 | `RADEGAST_AGENT_ENCRYPTION_KEY_PATH`      | `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_enc_key` | Path to the device encryption keypair                                              |
 | `RADEGAST_AGENT_STATE_DIR`                | `./.radegast-agent`                                             | Local state directory for manifests, offsets, and the default signing key location |
+| `RADEGAST_AGENT_RUSTINEL_CONFIG`          | `config.toml`                                                   | Path to the rustinel configuration file to sync active response settings to        |
 
 ### Notes
 

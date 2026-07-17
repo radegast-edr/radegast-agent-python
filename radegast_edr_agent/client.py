@@ -86,6 +86,11 @@ class BackendClient:
         resp = self._request("GET", "/exclusions/device")
         return resp.json()
 
+    def get_device_config(self) -> dict[str, Any]:
+        """Fetch active response configuration for this device."""
+        resp = self._request("GET", "/devices/config")
+        return resp.json()
+
     def submit_log(
         self,
         time: datetime,
