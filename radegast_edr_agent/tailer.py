@@ -11,6 +11,7 @@ import zipfile
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -37,6 +38,7 @@ class AlertTailer:
         send_rule_id: bool = True,
         enable_exclusions: bool = True,
         send_excluded_by: bool = True,
+        healthcheck_manager: Any | None = None,
     ):
         self._client = client
         self._signing_key = signing_key
@@ -47,6 +49,7 @@ class AlertTailer:
         self._send_rule_id = send_rule_id
         self._enable_exclusions = enable_exclusions
         self._send_excluded_by = send_excluded_by
+        self._healthcheck_manager = healthcheck_manager
         self._offset_path = state_dir / "tail_offset.json"
         self._sent_hashes_path = state_dir / "sent_alert_hashes.json"
         self._encryption_keys: list[str] = []
@@ -69,13 +72,16 @@ class AlertTailer:
     def _load_offset(self) -> None:
         """Restore tail position from disk."""
         if self._offset_path.exists():
-            data = json.loads(self._offset_path.read_text())
-            self._offset = data.get("offset", 0)
-            saved_file = data.get("file")
-            if saved_file:
-                self._current_file = Path(saved_file)
-                if self._current_file.exists():
-                    self._current_inode = os.stat(self._current_file).st_ino
+            try:
+                data = json.loads(self._offset_path.read_text())
+                self._offset = data.get("offset", 0)
+                saved_file = data.get("file")
+                if saved_file:
+                    self._current_file = Path(saved_file)
+                    if self._current_file.exists():
+                        self._current_inode = os.stat(self._current_file).st_ino
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse tail offset state, starting fresh")
 
     def _save_offset(self) -> None:
         """Persist tail position to disk."""
@@ -270,6 +276,14 @@ class AlertTailer:
                     rule_id = parts[1]
         except (json.JSONDecodeError, ValueError):
             alert_time = datetime.now(timezone.utc)
+
+        # Check if this alert was triggered by a healthcheck probe
+        if self._healthcheck_manager and alert is not None:
+            if self._healthcheck_manager.is_healthcheck_alert(alert):
+                logger.debug("Suppressing healthcheck alert from backend forwarding")
+                self._healthcheck_manager.record_healthcheck_alert(alert)
+                self._append_sent_hash(alert_hash)
+                return False
 
         # Check if this alert should be excluded
         excluded_by = None

@@ -22,6 +22,7 @@ from radegast_edr_agent.crypto import (
     load_encryption_key,
     load_signing_key,
 )
+from radegast_edr_agent.healthcheck import HealthCheckManager
 from radegast_edr_agent.packs import PackSyncer, ensure_placeholders_and_ioc
 from radegast_edr_agent.tailer import AlertTailer, rotate_rustinel_logs
 from radegast_edr_agent.version import (
@@ -68,6 +69,8 @@ def ensure_directories() -> None:
     (settings.rules_dir / "sigma").mkdir(exist_ok=True)
     (settings.rules_dir / "yara").mkdir(exist_ok=True)
     (settings.rules_dir / "ioc").mkdir(exist_ok=True)
+    if settings.healthcheck_rule_dir:
+        settings.healthcheck_rule_dir.mkdir(parents=True, exist_ok=True)
     ensure_placeholders_and_ioc(settings.rules_dir)
 
 
@@ -204,6 +207,14 @@ def main(argv: list[str] | None = None) -> None:
     # Sync active response configuration on startup
     sync_active_response(client)
 
+    # Initialize healthcheck manager
+    healthcheck_mgr = HealthCheckManager(
+        client=client,
+        rule_dir=settings.healthcheck_rule_dir,
+        timeout=settings.healthcheck_timeout,
+        enabled=settings.healthcheck,
+    )
+
     # Initialize alert tailer
     tailer = AlertTailer(
         client=client,
@@ -215,11 +226,24 @@ def main(argv: list[str] | None = None) -> None:
         send_rule_id=settings.send_rule_id,
         enable_exclusions=True,
         send_excluded_by=settings.send_excluded_by,
+        healthcheck_manager=healthcheck_mgr,
     )
 
     # Initial exclusion load — runs immediately so exclusions are ready before the
     # first alert is processed (not deferred to the first poll cycle).
     tailer.force_refresh_exclusions()
+
+    # Initial healthcheck execution or disabled health report
+    if not settings.healthcheck:
+        try:
+            client.report_health(None)
+        except Exception as e:
+            logger.error("Failed to report disabled health status to backend: %s", e)
+    else:
+        try:
+            healthcheck_mgr.start_check()
+        except Exception as e:
+            logger.error("Initial healthcheck failed: %s", e)
 
     # Graceful shutdown handler
     shutdown = False
@@ -236,17 +260,20 @@ def main(argv: list[str] | None = None) -> None:
     # Main loop
     last_sync = time.time()
     last_autoupdate = time.time()
+    last_healthcheck = time.time()
     last_log_rotation = 0
     first_autoupdate_done = False
     logger.info(
         "Agent running — polling alerts every %ds, syncing packs every %ds, "
+        "healthcheck every %ds (enabled=%s), "
         "first autoupdate check after %ds, then every %ds",
         POLL_INTERVAL,
         settings.sync_interval,
+        settings.healthcheck_interval,
+        settings.healthcheck,
         settings.agent_autoupdate_initial_delay,
         settings.agent_autoupdate_interval,
     )
-
     try:
         while not shutdown:
             # Poll for new alerts
@@ -254,6 +281,13 @@ def main(argv: list[str] | None = None) -> None:
                 tailer.poll()
             except Exception as e:
                 logger.error("Alert poll error: %s", e)
+
+            # Update healthcheck state machine
+            if settings.healthcheck:
+                try:
+                    healthcheck_mgr.update()
+                except Exception as e:
+                    logger.error("Healthcheck update error: %s", e)
 
             now = time.time()
 
@@ -281,6 +315,14 @@ def main(argv: list[str] | None = None) -> None:
                     logger.error("Active response sync error: %s", e)
                 tailer.force_refresh_exclusions()
                 last_sync = now
+
+            # Periodic healthcheck
+            if settings.healthcheck and (now - last_healthcheck >= settings.healthcheck_interval):
+                try:
+                    healthcheck_mgr.start_check()
+                except Exception as e:
+                    logger.error("Healthcheck error: %s", e)
+                last_healthcheck = now
 
             # Periodic autoupdate check
             # First check after initial delay, subsequent checks after interval

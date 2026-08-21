@@ -7,3 +7,5 @@ rules
 device_key
 .radegast-agent
 .idea
+config.toml
+

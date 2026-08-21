@@ -288,6 +288,7 @@ def test_main_prints_version(capsys) -> None:
 @patch("radegast_edr_agent.cli.ensure_encryption_key")
 @patch("radegast_edr_agent.cli.load_signing_key")
 @patch("radegast_edr_agent.cli.PackSyncer")
+@patch("radegast_edr_agent.cli.HealthCheckManager")
 @patch("radegast_edr_agent.cli.AlertTailer")
 @patch("radegast_edr_agent.cli.check_and_perform_autoupdate")
 @patch("radegast_edr_agent.cli.time.time")
@@ -297,6 +298,7 @@ def test_main_loop_triggers_autoupdate(
     mock_time,
     mock_check_update,
     mock_tailer,
+    mock_healthcheck,
     mock_syncer,
     mock_load_key,
     mock_ensure_enc_key,
@@ -320,6 +322,67 @@ def test_main_loop_triggers_autoupdate(
 
     mock_check_update.assert_called_once()
     mock_execvp.assert_called_once()
+
+
+@patch("radegast_edr_agent.cli.BackendClient")
+@patch("radegast_edr_agent.cli.ensure_signing_key")
+@patch("radegast_edr_agent.cli.ensure_encryption_key")
+@patch("radegast_edr_agent.cli.load_signing_key")
+@patch("radegast_edr_agent.cli.PackSyncer")
+@patch("radegast_edr_agent.cli.HealthCheckManager")
+@patch("radegast_edr_agent.cli.AlertTailer")
+def test_main_runs_healthcheck_when_enabled(
+    mock_tailer,
+    mock_healthcheck,
+    mock_syncer,
+    mock_load_key,
+    mock_ensure_enc_key,
+    mock_ensure_key,
+    mock_client,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(cli.settings, "device_token", "dummy-token")
+    monkeypatch.setattr(cli.settings, "healthcheck", True)
+    monkeypatch.setattr(cli.settings, "init_wait_seconds", 0)
+
+    # Make main loop exit on first iteration
+    with patch("radegast_edr_agent.cli.time.sleep", side_effect=KeyboardInterrupt):
+        try:
+            cli.main([])
+        except KeyboardInterrupt:
+            pass
+
+    mock_healthcheck.return_value.start_check.assert_called()
+
+
+@patch("radegast_edr_agent.cli.BackendClient")
+@patch("radegast_edr_agent.cli.ensure_signing_key")
+@patch("radegast_edr_agent.cli.ensure_encryption_key")
+@patch("radegast_edr_agent.cli.load_signing_key")
+@patch("radegast_edr_agent.cli.PackSyncer")
+@patch("radegast_edr_agent.cli.HealthCheckManager")
+@patch("radegast_edr_agent.cli.AlertTailer")
+def test_main_reports_none_when_healthcheck_disabled(
+    mock_tailer,
+    mock_healthcheck,
+    mock_syncer,
+    mock_load_key,
+    mock_ensure_enc_key,
+    mock_ensure_key,
+    mock_client,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(cli.settings, "device_token", "dummy-token")
+    monkeypatch.setattr(cli.settings, "healthcheck", False)
+    monkeypatch.setattr(cli.settings, "init_wait_seconds", 0)
+
+    with patch("radegast_edr_agent.cli.time.sleep", side_effect=KeyboardInterrupt):
+        try:
+            cli.main([])
+        except KeyboardInterrupt:
+            pass
+
+    mock_client.return_value.report_health.assert_called_with(None)
 
 
 def test_ensure_signing_key_existing(tmp_path, monkeypatch) -> None:

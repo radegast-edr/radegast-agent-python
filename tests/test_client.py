@@ -298,3 +298,50 @@ class TestReportVersions:
             )
             with pytest.raises(httpx.HTTPStatusError):
                 client.report_versions("1.0.0", "0.5.0")
+
+
+class TestReportHealth:
+    def test_report_health_true(self, client):
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/devices/health",
+                json={"message": "Health status updated"},
+            )
+            client.report_health(True)
+            mock.assert_called_once_with(
+                "POST",
+                "/devices/health",
+                json={"healthy": True},
+            )
+
+    def test_report_health_false(self, client):
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/devices/health",
+                json={"message": "Health status updated"},
+            )
+            client.report_health(False)
+            mock.assert_called_once_with(
+                "POST",
+                "/devices/health",
+                json={"healthy": False},
+            )
+
+    def test_report_health_none(self, client):
+        with patch.object(client._client, "request") as mock:
+            mock.return_value = make_response(
+                200,
+                method="POST",
+                url="http://localhost:8000/devices/health",
+                json={"message": "Health status updated"},
+            )
+            client.report_health(None)
+            mock.assert_called_once_with(
+                "POST",
+                "/devices/health",
+                json={"healthy": None},
+            )

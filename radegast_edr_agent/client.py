@@ -135,5 +135,14 @@ class BackendClient:
         )
         logger.info("Encryption key registered with backend")
 
+    def report_health(self, healthy: bool | None) -> None:
+        """Report device health status to the backend."""
+        self._request(
+            "POST",
+            "/devices/health",
+            json={"healthy": healthy},
+        )
+        logger.info("Reported health status to backend: healthy=%s", healthy)
+
     def close(self) -> None:
         self._client.close()

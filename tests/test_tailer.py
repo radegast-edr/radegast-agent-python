@@ -219,6 +219,22 @@ class TestOffsetPersistence:
         client.submit_log.reset_mock()
         assert tailer2.poll() == 0
 
+    def test_corrupt_offset_file_starts_fresh(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+
+        # Write corrupted/empty json to offset file
+        tailer._offset_path.write_text("")
+
+        # Attempting to load should not crash and start fresh (offset = 0)
+        tailer2 = AlertTailer(
+            client=client,
+            signing_key=tailer._signing_key,
+            alerts_dir=alerts_dir,
+            alerts_filename="alerts.json",
+            state_dir=tailer._state_dir,
+        )
+        assert tailer2._offset == 0
+
 
 class TestNoEncryptionKeys:
     def test_skips_when_no_keys(self, setup_tailer):

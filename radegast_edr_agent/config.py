@@ -30,11 +30,18 @@ class AgentSettings(BaseSettings):
     state_dir: Path = Path("./.radegast-agent")
     rustinel_config: Path = Path("config.toml")
 
+    healthcheck: bool = True
+    healthcheck_interval: int = 60  # seconds between healthcheck runs
+    healthcheck_timeout: float = 10.0  # seconds to wait for rustinel alert
+    healthcheck_rule_dir: Path | None = None
+
     def model_post_init(self, __context: Any) -> None:
         if self.signing_key_path is None:
             self.signing_key_path = self.state_dir / "device_key"
         if self.encryption_key_path is None:
             self.encryption_key_path = self.state_dir / "device_enc_key"
+        if self.healthcheck_rule_dir is None:
+            self.healthcheck_rule_dir = self.rules_dir / "sigma" / "_healthcheck"
 
 
 settings = AgentSettings()
