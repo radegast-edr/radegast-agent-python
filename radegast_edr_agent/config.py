@@ -32,7 +32,7 @@ class AgentSettings(BaseSettings):
 
     healthcheck: bool = True
     healthcheck_interval: int = 60  # seconds between healthcheck runs
-    healthcheck_timeout: float = 10.0  # seconds to wait for rustinel alert
+    healthcheck_timeout: float = 30.0  # seconds to wait for rustinel alert
     healthcheck_rule_dir: Path | None = None
 
     def model_post_init(self, __context: Any) -> None:
