@@ -86,6 +86,11 @@ class BackendClient:
         resp = self._request("GET", "/exclusions/device")
         return resp.json()
 
+    def get_prevention_allowlist(self) -> dict[str, Any]:
+        """Fetch prevention allowlist entries and group keys for this device."""
+        resp = self._request("GET", "/prevention-allowlist/device")
+        return resp.json()
+
     def get_device_config(self) -> dict[str, Any]:
         """Fetch active response configuration for this device."""
         resp = self._request("GET", "/devices/config")

@@ -15,6 +15,7 @@ from radegast_edr_agent.autoupdate import check_and_perform_autoupdate
 from radegast_edr_agent.client import BackendClient
 from radegast_edr_agent.config import settings
 from radegast_edr_agent.crypto import (
+    decrypt_with_key,
     generate_device_keypair,
     generate_encryption_keypair,
     get_encryption_public_key,
@@ -109,12 +110,81 @@ def ensure_encryption_key(client: BackendClient) -> bool:
         return True
 
 
+def _get_decrypted_allowlists(client: BackendClient) -> tuple[list[str], list[str]]:
+    allowlist_paths: list[str] = []
+    allowlist_images: list[str] = []
+    
+    try:
+        data = client.get_prevention_allowlist()
+        entries = data.get("entries", [])
+        group_keys = data.get("group_keys", {})
+        
+        if not entries:
+            return [], []
+            
+        if not settings.encryption_key_path or not settings.encryption_key_path.exists():
+            logger.warning("Agent encryption key file does not exist, cannot decrypt allowlists")
+            return [], []
+            
+        try:
+            device_priv_key = load_encryption_key(settings.encryption_key_path)
+        except Exception as e:
+            logger.error("Failed to load device encryption key for allowlists: %s", e)
+            return [], []
+            
+        decrypted_group_keys: dict[str, str] = {}
+        
+        for entry in entries:
+            group_id = str(entry.get("device_group_id"))
+            
+            if group_id not in decrypted_group_keys:
+                g_key_info = group_keys.get(group_id)
+                if not g_key_info:
+                    logger.warning("Group keys missing for group_id %s, skipping encrypted allowlist entry %s", group_id, entry.get("id"))
+                    continue
+                    
+                enc_group_priv_key = g_key_info.get("private_key")
+                if not enc_group_priv_key:
+                    logger.warning("Encrypted group private key missing for group_id %s", group_id)
+                    continue
+                    
+                try:
+                    decrypted_group_keys[group_id] = decrypt_with_key(enc_group_priv_key, device_priv_key)
+                except Exception as err:
+                    logger.error("Failed to decrypt group private key for group_id %s: %s", group_id, err)
+                    continue
+                    
+            group_priv_key = decrypted_group_keys.get(group_id)
+            if not group_priv_key:
+                continue
+                
+            try:
+                decrypted_value = decrypt_with_key(entry["value"], group_priv_key)
+                entry_type = entry.get("entry_type")
+                if entry_type == "path":
+                    allowlist_paths.append(decrypted_value)
+                elif entry_type == "image":
+                    allowlist_images.append(decrypted_value)
+                else:
+                    logger.warning("Unknown allowlist entry_type %s for entry %s", entry_type, entry.get("id"))
+            except Exception as err:
+                logger.error("Failed to decrypt value for allowlist entry %s: %s", entry.get("id"), err)
+                continue
+                
+        return allowlist_paths, allowlist_images
+    except Exception as e:
+        logger.warning("Failed to fetch or process prevention allowlist: %s", e)
+        return [], []
+
+
 def sync_active_response(client: BackendClient) -> None:
     """Fetch active response settings from backend and sync to rustinel config.toml."""
     try:
         config = client.get_device_config()
         enabled = config.get("response_enabled", False)
         severity = config.get("response_min_severity", "critical")
+
+        allowlist_paths, allowlist_images = _get_decrypted_allowlists(client)
 
         config_path = settings.rustinel_config
         logger.info(
@@ -143,6 +213,8 @@ def sync_active_response(client: BackendClient) -> None:
         doc["response"]["enabled"] = enabled
         doc["response"]["prevention_enabled"] = enabled
         doc["response"]["min_severity"] = severity.lower()
+        doc["response"]["allowlist_paths"] = allowlist_paths
+        doc["response"]["allowlist_images"] = allowlist_images
 
         try:
             config_path.parent.mkdir(parents=True, exist_ok=True)
