@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +11,7 @@ from radegast_edr_agent.autoupdate import (
     detect_project_root,
     find_uv,
     is_newer_version,
+    is_release_old_enough,
     parse_version,
 )
 from radegast_edr_agent.crypto import generate_device_keypair, generate_encryption_keypair
@@ -148,10 +150,30 @@ class TestDetectProjectRoot:
 # --- Autoupdate integration tests ------------------------------------------------
 
 
-def _pypi_mock(version: str) -> MagicMock:
+def _upload(days_ago: float, yanked: bool = False) -> list[dict]:
+    when = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    return [{"upload_time_iso_8601": when.isoformat().replace("+00:00", "Z"), "yanked": yanked}]
+
+
+def _pypi_mock(version: str, days_ago: float = 10) -> MagicMock:
     resp = MagicMock()
-    resp.json.return_value = {"info": {"version": version}}
+    resp.json.return_value = {"info": {"version": version}, "urls": _upload(days_ago)}
     return resp
+
+
+class TestIsReleaseOldEnough:
+    def test_boundary_is_four_days(self) -> None:
+        assert is_release_old_enough(_upload(4.01)) is True
+        assert is_release_old_enough(_upload(3.99)) is False
+
+    def test_ignores_yanked_and_untimed_files(self) -> None:
+        assert is_release_old_enough(_upload(10, yanked=True)) is False
+        assert is_release_old_enough([{"upload_time_iso_8601": None}]) is False
+        assert is_release_old_enough([]) is False
+
+    def test_uses_latest_file_upload_time(self) -> None:
+        assert is_release_old_enough(_upload(10) + _upload(1)) is False
+        assert is_release_old_enough(_upload(10) + _upload(5)) is True
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
@@ -182,7 +204,7 @@ def test_check_and_perform_autoupdate_tool_upgrade(
     updated = check_and_perform_autoupdate()
     assert updated is True
     mock_run.assert_called_once_with(
-        ["/home/user/.local/bin/uv", "tool", "upgrade", "radegast-edr-agent"],
+        ["/home/user/.local/bin/uv", "tool", "install", "--force", "radegast-edr-agent==0.2.0"],
         check=True,
     )
 
@@ -203,7 +225,7 @@ def test_check_and_perform_autoupdate_project_upgrade(
     updated = check_and_perform_autoupdate()
     assert updated is True
     mock_run.assert_called_once_with(
-        ["/home/user/.local/bin/uv", "add", "radegast-edr-agent", "--upgrade"],
+        ["/home/user/.local/bin/uv", "add", "radegast-edr-agent==0.2.0"],
         check=True,
         cwd=str(tmp_path),
     )
@@ -224,7 +246,7 @@ def test_check_and_perform_autoupdate_pip_fallback(
     updated = check_and_perform_autoupdate()
     assert updated is True
     mock_run.assert_called_once_with(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "radegast-edr-agent"],
+        [sys.executable, "-m", "pip", "install", "--upgrade", "radegast-edr-agent==0.2.0"],
         check=True,
     )
 
@@ -262,7 +284,20 @@ def test_check_and_perform_autoupdate_upgrade_fails(
 
     updated = check_and_perform_autoupdate()
     assert updated is False
-    mock_run.assert_called_once_with(["/usr/local/bin/uv", "tool", "upgrade", "radegast-edr-agent"], check=True)
+    mock_run.assert_called_once_with(
+        ["/usr/local/bin/uv", "tool", "install", "--force", "radegast-edr-agent==0.2.0"], check=True
+    )
+
+
+@patch("radegast_edr_agent.autoupdate.httpx.get")
+@patch("radegast_edr_agent.autoupdate.get_agent_version")
+@patch("radegast_edr_agent.autoupdate.subprocess.run")
+def test_check_and_perform_autoupdate_skips_too_new_release(mock_run, mock_get_version, mock_get) -> None:
+    mock_get_version.return_value = "0.1.0"
+    mock_get.return_value = _pypi_mock("0.2.0", days_ago=1)
+
+    assert check_and_perform_autoupdate() is False
+    mock_run.assert_not_called()
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
