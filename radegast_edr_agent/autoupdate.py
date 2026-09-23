@@ -53,7 +53,7 @@ def is_release_old_enough(
     min_age: timedelta = MIN_RELEASE_AGE,
     now: datetime | None = None,
 ) -> bool:
-    """Check that a release was first published at least ``min_age`` ago.
+    """Check that a release's most recent file was uploaded at least ``min_age`` ago.
 
     ``files`` are the PyPI file entries of one release. Yanked files are ignored, and a
     release without a usable upload time is treated as too new.
@@ -71,7 +71,7 @@ def is_release_old_enough(
             continue
     if not times:
         return False
-    return (now or datetime.now(timezone.utc)) - min(times) >= min_age
+    return (now or datetime.now(timezone.utc)) - max(times) >= min_age
 
 
 def find_uv() -> str | None:

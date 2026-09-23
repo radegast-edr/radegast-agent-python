@@ -171,8 +171,9 @@ class TestIsReleaseOldEnough:
         assert is_release_old_enough([{"upload_time_iso_8601": None}]) is False
         assert is_release_old_enough([]) is False
 
-    def test_uses_earliest_file_upload_time(self) -> None:
-        assert is_release_old_enough(_upload(10) + _upload(1)) is True
+    def test_uses_latest_file_upload_time(self) -> None:
+        assert is_release_old_enough(_upload(10) + _upload(1)) is False
+        assert is_release_old_enough(_upload(10) + _upload(5)) is True
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
