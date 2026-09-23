@@ -7,7 +7,9 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -17,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 PYPI_JSON_URL = "https://pypi.org/pypi/radegast-edr-agent/json"
 PACKAGE_NAME = "radegast-edr-agent"
+MIN_RELEASE_AGE = timedelta(days=4)
 
 
 def get_version() -> str:
@@ -43,6 +46,32 @@ def is_newer_version(current: str, remote: str) -> bool:
         return parse_version(remote) > parse_version(current)
     except Exception:
         return remote != current
+
+
+def is_release_old_enough(
+    files: list[dict[str, Any]],
+    min_age: timedelta = MIN_RELEASE_AGE,
+    now: datetime | None = None,
+) -> bool:
+    """Check that a release was first published at least ``min_age`` ago.
+
+    ``files`` are the PyPI file entries of one release. Yanked files are ignored, and a
+    release without a usable upload time is treated as too new.
+    """
+    times = []
+    for f in files:
+        if f.get("yanked"):
+            continue
+        raw = f.get("upload_time_iso_8601")
+        if not raw:
+            continue
+        try:
+            times.append(datetime.fromisoformat(raw.replace("Z", "+00:00")))
+        except ValueError:
+            continue
+    if not times:
+        return False
+    return (now or datetime.now(timezone.utc)) - min(times) >= min_age
 
 
 def find_uv() -> str | None:
@@ -132,12 +161,13 @@ def _upgrade_via_pip(remote_version: str) -> bool:
     Python environment the agent is running in.
     """
     logger.info(
-        "uv not found — falling back to pip: %s -m pip install --upgrade %s",
+        "uv not found — falling back to pip: %s -m pip install --upgrade %s==%s",
         sys.executable,
         PACKAGE_NAME,
+        remote_version,
     )
     subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE_NAME],
+        [sys.executable, "-m", "pip", "install", "--upgrade", f"{PACKAGE_NAME}=={remote_version}"],
         check=True,
     )
     logger.info("Successfully updated agent to version %s via pip", remote_version)
@@ -160,21 +190,22 @@ def _do_upgrade(remote_version: str) -> bool:
         # uv tool mode but no uv — use pip as fallback
         return _upgrade_via_pip(remote_version)
 
+    requirement = f"{PACKAGE_NAME}=={remote_version}"
     if project_root is not None:
         logger.info(
-            "Running as uv project dependency (root: %s). Upgrading via: %s add %s --upgrade",
+            "Running as uv project dependency (root: %s). Upgrading via: %s add %s",
             project_root,
             uv,
-            PACKAGE_NAME,
+            requirement,
         )
         subprocess.run(
-            [uv, "add", PACKAGE_NAME, "--upgrade"],
+            [uv, "add", requirement],
             check=True,
             cwd=str(project_root),
         )
     else:
-        logger.info("Running as uv tool. Upgrading via: %s tool upgrade %s", uv, PACKAGE_NAME)
-        subprocess.run([uv, "tool", "upgrade", PACKAGE_NAME], check=True)
+        logger.info("Running as uv tool. Upgrading via: %s tool install --force %s", uv, requirement)
+        subprocess.run([uv, "tool", "install", "--force", requirement], check=True)
 
     logger.info("Successfully updated agent to version %s", remote_version)
     return True
@@ -182,6 +213,9 @@ def _do_upgrade(remote_version: str) -> bool:
 
 def check_and_perform_autoupdate() -> bool:
     """Check PyPI for a newer version and upgrade if one is available.
+
+    The latest release is only installed once it has been on PyPI for at least
+    ``MIN_RELEASE_AGE``; the upgrade is pinned to that exact version.
 
     Automatically detects whether the agent is installed as a ``uv tool`` or as a
     dependency inside a ``uv`` project, then picks the appropriate upgrade command.
@@ -195,13 +229,22 @@ def check_and_perform_autoupdate() -> bool:
         resp = httpx.get(PYPI_JSON_URL, timeout=15.0)
         resp.raise_for_status()
 
-        remote_version = str(resp.json()["info"]["version"])
+        data = resp.json()
+        remote_version = str(data["info"]["version"])
         local_version = get_agent_version()
 
         logger.info("Local version: %s, Remote version: %s", local_version, remote_version)
 
         if not is_newer_version(local_version, remote_version):
             logger.info("Agent is up to date (version %s)", local_version)
+            return False
+
+        if not is_release_old_enough(data.get("urls", [])):
+            logger.info(
+                "Version %s is newer but was released less than %s ago; skipping autoupdate for now",
+                remote_version,
+                MIN_RELEASE_AGE,
+            )
             return False
 
         logger.info(
