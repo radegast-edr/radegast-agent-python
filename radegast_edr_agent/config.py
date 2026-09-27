@@ -23,6 +23,15 @@ class AgentSettings(BaseSettings):
     max_log_age_days: int = 720
 
     sync_interval: int = 300  # seconds between pack sync checks
+    agent_autoupdate: bool = Field(
+        True,
+        validation_alias=AliasChoices(
+            "agent_autoupdate",
+            "autoupdate",
+            "radegast_agent_agent_autoupdate",
+            "radegast_agent_autoupdate",
+        ),
+    )
     agent_autoupdate_initial_delay: int = Field(
         300,
         validation_alias=AliasChoices(
@@ -76,6 +85,14 @@ class AgentSettings(BaseSettings):
     @autoupdate_delay_hours.setter
     def autoupdate_delay_hours(self, value: int) -> None:
         self.agent_autoupdate_delay_hours = value
+
+    @property
+    def autoupdate(self) -> bool:
+        return self.agent_autoupdate
+
+    @autoupdate.setter
+    def autoupdate(self, value: bool) -> None:
+        self.agent_autoupdate = value
 
 
 settings = AgentSettings()

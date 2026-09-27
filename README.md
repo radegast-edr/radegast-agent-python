@@ -43,6 +43,7 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 | `RADEGAST_AGENT_MAX_LOG_SIZE_MB`          | `10`                                                            | Maximum size of the rustinel log file in MB before rotation                        |
 | `RADEGAST_AGENT_MAX_LOG_AGE_DAYS`         | `720`                                                           | Maximum age of rotated rustinel log archives in days before deletion               |
 | `RADEGAST_AGENT_SYNC_INTERVAL`            | `300`                                                           | Seconds between pack sync checks                                                   |
+| `RADEGAST_AGENT_AUTOUPDATE`               | `true`                                                          | If `true`, enable periodic agent autoupdate from PyPI                              |
 | `RADEGAST_AGENT_AUTOUPDATE_INITIAL_DELAY` | `300` (5 minutes)                                               | Seconds until first autoupdate check after startup                                 |
 | `RADEGAST_AGENT_AUTOUPDATE_INTERVAL`      | `86400` (24 hours)                                              | Seconds between subsequent autoupdate checks                                       |
 | `RADEGAST_AGENT_AUTOUPDATE_DELAY_HOURS`   | `96` (4 days)                                                   | Hours to wait after a release is published on PyPI before autoupdating             |

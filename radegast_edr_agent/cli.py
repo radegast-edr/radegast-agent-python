@@ -403,22 +403,23 @@ def main(argv: list[str] | None = None) -> None:
 
             # Periodic autoupdate check
             # First check after initial delay, subsequent checks after interval
-            autoupdate_delay = (
-                settings.agent_autoupdate_initial_delay
-                if not first_autoupdate_done
-                else settings.agent_autoupdate_interval
-            )
-            if now - last_autoupdate >= autoupdate_delay:
-                try:
-                    updated = check_and_perform_autoupdate()
-                    if updated:
-                        logger.info("Agent upgraded. Restarting process...")
-                        client.close()
-                        os.execvp(sys.argv[0], sys.argv)
-                except Exception as e:
-                    logger.error("Autoupdate error: %s", e)
-                last_autoupdate = now
-                first_autoupdate_done = True
+            if settings.agent_autoupdate:
+                autoupdate_delay = (
+                    settings.agent_autoupdate_initial_delay
+                    if not first_autoupdate_done
+                    else settings.agent_autoupdate_interval
+                )
+                if now - last_autoupdate >= autoupdate_delay:
+                    try:
+                        updated = check_and_perform_autoupdate()
+                        if updated:
+                            logger.info("Agent upgraded. Restarting process...")
+                            client.close()
+                            os.execvp(sys.argv[0], sys.argv)
+                    except Exception as e:
+                        logger.error("Autoupdate error: %s", e)
+                    last_autoupdate = now
+                    first_autoupdate_done = True
 
             time.sleep(POLL_INTERVAL)
     finally:

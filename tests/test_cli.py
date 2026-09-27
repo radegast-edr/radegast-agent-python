@@ -1,15 +1,18 @@
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import ANY, MagicMock, call, patch
 
 import pytest
 
 from radegast_edr_agent import cli
 from radegast_edr_agent.autoupdate import (
+    _infer_uv_tool_dirs,
     check_and_perform_autoupdate,
     detect_project_root,
     find_uv,
+    get_uv_tool_env,
     is_newer_version,
     is_release_old_enough,
     parse_version,
@@ -205,6 +208,23 @@ class TestAutoupdateConfig:
         assert s.agent_autoupdate_delay_hours == 12
         assert s.autoupdate_delay_hours == 12
 
+    def test_default_autoupdate_enabled(self) -> None:
+        s = AgentSettings()
+        assert s.agent_autoupdate is True
+        assert s.autoupdate is True
+
+    def test_autoupdate_env_var_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RADEGAST_AGENT_AUTOUPDATE", "false")
+        s = AgentSettings()
+        assert s.agent_autoupdate is False
+        assert s.autoupdate is False
+
+    def test_autoupdate_property_setter(self) -> None:
+        s = AgentSettings()
+        s.autoupdate = False
+        assert s.agent_autoupdate is False
+        assert s.autoupdate is False
+
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
 @patch("radegast_edr_agent.autoupdate.get_agent_version")
@@ -236,6 +256,7 @@ def test_check_and_perform_autoupdate_tool_upgrade(
     mock_run.assert_called_once_with(
         ["/home/user/.local/bin/uv", "tool", "install", "--force", "radegast-edr-agent==0.2.0"],
         check=True,
+        env=ANY,
     )
 
 
@@ -258,6 +279,7 @@ def test_check_and_perform_autoupdate_project_upgrade(
         ["/home/user/.local/bin/uv", "add", "radegast-edr-agent==0.2.0"],
         check=True,
         cwd=str(tmp_path),
+        env=ANY,
     )
 
 
@@ -278,6 +300,7 @@ def test_check_and_perform_autoupdate_pip_fallback(
     mock_run.assert_called_once_with(
         [sys.executable, "-m", "pip", "install", "--upgrade", "radegast-edr-agent==0.2.0"],
         check=True,
+        env=ANY,
     )
 
 
@@ -314,9 +337,123 @@ def test_check_and_perform_autoupdate_upgrade_fails(
 
     updated = check_and_perform_autoupdate()
     assert updated is False
-    mock_run.assert_called_once_with(
-        ["/usr/local/bin/uv", "tool", "install", "--force", "radegast-edr-agent==0.2.0"], check=True
+    assert mock_run.call_count == 3
+    assert mock_run.call_args_list[0] == call(
+        ["/usr/local/bin/uv", "tool", "install", "--force", "radegast-edr-agent==0.2.0"],
+        check=True,
+        env=ANY,
     )
+
+
+@patch("radegast_edr_agent.autoupdate.find_uv", return_value="/usr/local/bin/uv")
+@patch("radegast_edr_agent.autoupdate.detect_project_root", return_value=None)
+@patch("radegast_edr_agent.autoupdate.httpx.get")
+@patch("radegast_edr_agent.autoupdate.get_agent_version")
+@patch("radegast_edr_agent.autoupdate.subprocess.run")
+def test_check_and_perform_autoupdate_fallback_to_uv_pip(
+    mock_run, mock_get_version, mock_get, mock_detect, mock_find_uv
+) -> None:
+    """If uv tool install fails (e.g. Windows file locking), fall back to in-place uv pip."""
+    mock_get_version.return_value = "0.1.0"
+    mock_get.return_value = _pypi_mock("0.2.0")
+
+    # tool install fails, uv pip succeeds
+    mock_run.side_effect = [subprocess.CalledProcessError(1, "uv"), None]
+
+    updated = check_and_perform_autoupdate()
+    assert updated is True
+    assert mock_run.call_count == 2
+    assert mock_run.call_args_list[0] == call(
+        ["/usr/local/bin/uv", "tool", "install", "--force", "radegast-edr-agent==0.2.0"],
+        check=True,
+        env=ANY,
+    )
+    assert mock_run.call_args_list[1] == call(
+        [
+            "/usr/local/bin/uv",
+            "pip",
+            "install",
+            "--upgrade",
+            "--python",
+            sys.executable,
+            "radegast-edr-agent==0.2.0",
+        ],
+        check=True,
+        env=ANY,
+    )
+
+
+def test_infer_uv_tool_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test inference of UV_TOOL_DIR and related dirs from executable path."""
+    tool_dir = tmp_path / "Radegast" / "agent" / ".tools"
+    venv_python = tool_dir / "radegast-edr-agent" / "Scripts" / "python.exe"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.touch()
+
+    tool_bin = tmp_path / "Radegast" / "agent" / "home" / ".local" / "bin"
+    tool_bin.mkdir(parents=True)
+
+    cache_dir = tmp_path / "Radegast" / "agent" / ".cache"
+    cache_dir.mkdir(parents=True)
+
+    monkeypatch.setattr("radegast_edr_agent.autoupdate.sys.executable", str(venv_python))
+    monkeypatch.delenv("UV_TOOL_DIR", raising=False)
+    monkeypatch.delenv("UV_TOOL_BIN_DIR", raising=False)
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+
+    inferred = _infer_uv_tool_dirs()
+
+    assert inferred["UV_TOOL_DIR"] == str(tool_dir)
+    assert inferred["UV_TOOL_BIN_DIR"] == str(tool_bin)
+    assert inferred["UV_CACHE_DIR"] == str(cache_dir)
+
+    env = get_uv_tool_env()
+    assert env["UV_TOOL_DIR"] == str(tool_dir)
+    assert env["UV_TOOL_BIN_DIR"] == str(tool_bin)
+    assert env["UV_CACHE_DIR"] == str(cache_dir)
+
+
+@patch("radegast_edr_agent.autoupdate.find_uv", return_value="/home/user/.local/bin/uv")
+@patch("radegast_edr_agent.autoupdate.detect_project_root", return_value=None)
+@patch("radegast_edr_agent.autoupdate.httpx.get")
+@patch("radegast_edr_agent.autoupdate.get_agent_version")
+@patch("radegast_edr_agent.autoupdate.subprocess.run")
+def test_autoupdate_without_uv_tool_dir_in_environ(
+    mock_run,
+    mock_get_version,
+    mock_get,
+    mock_detect,
+    mock_find_uv,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When running without UV_TOOL_DIR in os.environ (like a Windows service), tool dir is inferred."""
+    tool_dir = tmp_path / "Radegast" / "agent" / ".tools"
+    venv_python = tool_dir / "radegast-edr-agent" / "Scripts" / "python.exe"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.touch()
+
+    monkeypatch.setattr("radegast_edr_agent.autoupdate.sys.executable", str(venv_python))
+    monkeypatch.delenv("UV_TOOL_DIR", raising=False)
+    monkeypatch.delenv("UV_TOOL_BIN_DIR", raising=False)
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+
+    mock_get_version.return_value = "0.1.0"
+    mock_get.return_value = _pypi_mock("0.2.0")
+
+    updated = check_and_perform_autoupdate()
+    assert updated is True
+    assert mock_run.call_count == 1
+    call_args, call_kwargs = mock_run.call_args
+    assert call_args[0] == [
+        "/home/user/.local/bin/uv",
+        "tool",
+        "install",
+        "--force",
+        "radegast-edr-agent==0.2.0",
+    ]
+    env_passed = call_kwargs.get("env", {})
+    assert env_passed.get("UV_TOOL_DIR") == str(tool_dir)
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
@@ -410,6 +547,45 @@ def test_main_loop_triggers_autoupdate(
 
     mock_check_update.assert_called_once()
     mock_execvp.assert_called_once()
+
+
+@patch("radegast_edr_agent.cli.BackendClient")
+@patch("radegast_edr_agent.cli.ensure_signing_key")
+@patch("radegast_edr_agent.cli.ensure_encryption_key")
+@patch("radegast_edr_agent.cli.load_signing_key")
+@patch("radegast_edr_agent.cli.PackSyncer")
+@patch("radegast_edr_agent.cli.HealthCheckManager")
+@patch("radegast_edr_agent.cli.AlertTailer")
+@patch("radegast_edr_agent.cli.check_and_perform_autoupdate")
+@patch("radegast_edr_agent.cli.time.time")
+@patch("radegast_edr_agent.cli.time.sleep")
+def test_main_loop_skips_autoupdate_when_disabled(
+    mock_sleep,
+    mock_time,
+    mock_check_update,
+    mock_tailer,
+    mock_healthcheck,
+    mock_syncer,
+    mock_load_key,
+    mock_ensure_enc_key,
+    mock_ensure_key,
+    mock_client,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(cli.settings, "device_token", "dummy-token")
+    monkeypatch.setattr(cli.settings, "agent_autoupdate", False)
+    monkeypatch.setattr(cli.settings, "agent_autoupdate_initial_delay", 10)
+    monkeypatch.setattr(cli.settings, "sync_interval", 300)
+    monkeypatch.setattr(cli.settings, "init_wait_seconds", 0)
+
+    # Time jumps past the delay
+    mock_time.side_effect = [0.0, 0.0, 0.0, 0.0] + [95000.0] * 10
+    mock_sleep.side_effect = SystemExit(0)
+
+    with pytest.raises(SystemExit):
+        cli.main([])
+
+    mock_check_update.assert_not_called()
 
 
 @patch("radegast_edr_agent.cli.BackendClient")

@@ -1,6 +1,8 @@
+import base64
 import io
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -27,7 +29,7 @@ def run_command(cmd, cwd=None, env=None):
     return res
 
 
-def stop_process(proc, name):
+def stop_process(proc, name, log_file=None):
     if not proc:
         return
     print(f"Stopping {name} process...")
@@ -39,19 +41,19 @@ def stop_process(proc, name):
             capture_output=True,
             check=False,
         )
-        try:
-            stdout, stderr = proc.communicate(timeout=5)
-        except Exception:
-            stdout, stderr = "", ""
     else:
         proc.terminate()
         try:
-            stdout, stderr = proc.communicate(timeout=5)
+            proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-            stdout, stderr = proc.communicate()
 
-    print(f"{name} stdout:\n{stdout}\n{name} stderr:\n{stderr}")
+    if log_file and Path(log_file).exists():
+        try:
+            content = Path(log_file).read_text(encoding="utf-8", errors="replace")
+            print(f"{name} log:\n{content}")
+        except Exception as e:
+            print(f"Failed to read {name} log: {e}")
 
 
 def test_agent_integration():
@@ -85,18 +87,38 @@ def test_agent_integration():
     agent_process = None
 
     try:
-        # Clone console backend
-        print("Cloning console backend...")
-        run_command(
-            [
-                "git",
-                "clone",
-                "--depth",
-                "1",
-                "https://github.com/radegast-edr/radegast-console-backend.git",
-                str(backend_dir),
-            ]
-        )
+        # Setup console backend: use local workspace repo if present, otherwise clone
+        local_backend = Path(__file__).resolve().parents[2] / "radegast-console-backend"
+        if not os.environ.get("FORCE_GITHUB_BACKEND") and local_backend.exists() and (local_backend / "app").exists():
+            print(f"Using local console backend from {local_backend}...")
+            shutil.copytree(
+                local_backend,
+                backend_dir,
+                ignore=shutil.ignore_patterns(
+                    ".git",
+                    ".venv",
+                    "__pycache__",
+                    "*.pyc",
+                    "node_modules",
+                    ".antigravitycli*",
+                    ".pytest_cache",
+                    ".ruff_cache",
+                    ".idea",
+                    ".vscode",
+                ),
+            )
+        else:
+            print("Cloning console backend from GitHub...")
+            run_command(
+                [
+                    "git",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "https://github.com/radegast-edr/radegast-console-backend.git",
+                    str(backend_dir),
+                ]
+            )
 
         # Run migrations on backend
         print("Applying database migrations on backend...")
@@ -108,6 +130,8 @@ def test_agent_integration():
 
         # Start backend uvicorn server in background
         print("Starting backend server...")
+        backend_log = temp_path / "backend.log"
+        backend_log_f = open(backend_log, "w", encoding="utf-8")
         server_process = subprocess.Popen(
             [
                 "uv",
@@ -121,9 +145,8 @@ def test_agent_integration():
             ],
             cwd=backend_dir,
             env=backend_env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            stdout=backend_log_f,
+            stderr=subprocess.STDOUT,
         )
 
         # Wait for backend server to be healthy
@@ -243,6 +266,43 @@ level: low
 
         print(f"Registered device with token: {device_token}")
 
+        # Verify Windows installer templates served by the backend
+        print("Verifying Windows installer templates from backend...")
+        with httpx.Client(base_url="http://127.0.0.1:8081/api/v1") as client:
+            # 1. Default Windows install (no explicit autoupdate param)
+            resp = client.get("/device/install?os=windows")
+            if resp.status_code != 200:
+                raise RuntimeError(f"Failed to get default windows install script: {resp.status_code} {resp.text}")
+            chunks = re.findall(r"\(echo\s+([A-Za-z0-9+/=]+)\)", resp.text)
+            decoded_service = base64.b64decode("".join(chunks)).decode("utf-8")
+
+            assert '<env name="UV_TOOL_DIR" value="{agent_tools_dir}" />' in decoded_service, (
+                "Default Windows install script must configure UV_TOOL_DIR in service XML"
+            )
+            assert '<env name="UV_TOOL_BIN_DIR" value="{tool_bin_dir}" />' in decoded_service, (
+                "Default Windows install script must configure UV_TOOL_BIN_DIR in service XML"
+            )
+            assert '<env name="UV_CACHE_DIR" value="{cache_dir}" />' in decoded_service, (
+                "Default Windows install script must configure UV_CACHE_DIR in service XML"
+            )
+            assert '<env name="UV_PYTHON" value="{python_exe_path}" />' in decoded_service, (
+                "Default Windows install script must configure UV_PYTHON in service XML"
+            )
+
+            # 2. Windows install with agent-autoupdate=false
+            resp_noauto = client.get("/device/install?os=windows&agent-autoupdate=false")
+            chunks_noauto = re.findall(r"\(echo\s+([A-Za-z0-9+/=]+)\)", resp_noauto.text)
+            decoded_noauto = base64.b64decode("".join(chunks_noauto)).decode("utf-8")
+            assert '<env name="UV_TOOL_DIR" value="{agent_tools_dir}" />' in decoded_noauto
+            assert "agent_autoupdate = False" in decoded_noauto
+
+            # 3. Windows install with agent-autoupdate=true
+            resp_auto = client.get("/device/install?os=windows&agent-autoupdate=true")
+            chunks_auto = re.findall(r"\(echo\s+([A-Za-z0-9+/=]+)\)", resp_auto.text)
+            decoded_auto = base64.b64decode("".join(chunks_auto)).decode("utf-8")
+            assert '<env name="UV_TOOL_DIR" value="{agent_tools_dir}" />' in decoded_auto
+            assert "agent_autoupdate = True" in decoded_auto
+
         # Start agent CLI process pointing to our backend
         print("Starting python agent...")
 
@@ -281,9 +341,14 @@ level: low
         rustinel_mock = shutil.which("true") or shutil.which("cmd") or sys.executable
         agent_env = os.environ.copy()
         agent_env.pop("UV_PROJECT_ROOT", None)
+        agent_env.pop("VIRTUAL_ENV", None)
+        # Ensure agent_env matches the environment configured by radegast-agent-service.xml
+        # (which we validated above contains UV_TOOL_DIR, UV_TOOL_BIN_DIR, UV_CACHE_DIR, UV_PYTHON)
         agent_env["UV_TOOL_DIR"] = str(tool_dir)
         agent_env["UV_TOOL_BIN_DIR"] = str(tool_bin_dir)
         agent_env["UV_CACHE_DIR"] = str(tool_cache_dir)
+        agent_env["UV_PYTHON"] = sys.executable
+        agent_env["PYTHONUNBUFFERED"] = "1"
         agent_env["RADEGAST_AGENT_BACKEND_URL"] = "http://127.0.0.1:8081/api/v1"
         agent_env["RADEGAST_AGENT_DEVICE_TOKEN"] = device_token
         agent_env["RADEGAST_AGENT_RULES_DIR"] = str(agent_rules_dir)
@@ -297,12 +362,26 @@ level: low
         agent_env["RADEGAST_AGENT_AUTOUPDATE_MIN_AGE_SECONDS"] = "0"
         agent_env["PATH"] = f"{tool_bin_dir}{os.pathsep}{agent_env.get('PATH', '')}"
 
+        tool_python = (
+            tool_dir
+            / "radegast-edr-agent"
+            / ("Scripts" if sys.platform.startswith("win32") else "bin")
+            / ("python.exe" if sys.platform.startswith("win32") else "python3")
+        )
+        # On Windows, running radegast-edr-agent.exe locks the executable file.
+        # Launching via tool venv's python interpreter prevents file locking on radegast-edr-agent.exe
+        # so uv tool upgrade can overwrite radegast-edr-agent.exe on disk.
+        agent_cmd = (
+            [str(tool_python), "-m", "radegast_edr_agent.cli"] if sys.platform.startswith("win32") else [str(agent_bin)]
+        )
+
+        agent_log = temp_path / "agent.log"
+        agent_log_f = open(agent_log, "w", encoding="utf-8")
         agent_process = subprocess.Popen(
-            [str(agent_bin)],
+            agent_cmd,
             env=agent_env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            stdout=agent_log_f,
+            stderr=subprocess.STDOUT,
         )
 
         # Wait for rules to be deployed by the agent
@@ -357,33 +436,35 @@ level: low
         # Verify agent auto-update on disk
         print("Waiting for agent to auto-update binary on disk...")
         upgraded_on_disk = False
-        for _ in range(30):
-            ver_res = run_command([str(agent_bin), "-V"])
-            if "0.9.0" in ver_res.stdout:
-                print(f"Agent binary updated on disk to: {ver_res.stdout.strip()}")
+        for _ in range(60):
+            res = subprocess.run([str(agent_bin), "-V"], capture_output=True, text=True, check=False)
+            if res.returncode == 0 and "0.9.0" in res.stdout:
+                print(f"Agent binary updated on disk to: {res.stdout.strip()}")
                 upgraded_on_disk = True
                 break
             time.sleep(1)
         assert upgraded_on_disk, "Agent binary on disk was not updated to 0.9.0"
 
         # Verify upgraded agent communicates with backend and updates device agent_version
+        print("Stopping initial agent process...")
+        stop_process(agent_process, "agent", log_file=agent_log)
+        agent_process = None
+
+        print("Starting upgraded 0.9.0 agent binary...")
+        agent_env["RADEGAST_AGENT_AUTOUPDATE"] = "false"
+        agent_process = subprocess.Popen(
+            [str(agent_bin)],
+            env=agent_env,
+            stdout=agent_log_f,
+            stderr=subprocess.STDOUT,
+        )
+
         print("Verifying upgraded agent reports version 0.9.0 to backend...")
         upgraded_in_backend = False
         dev_data = {}
         with httpx.Client(base_url="http://127.0.0.1:8081/api/v1") as client:
             client.post("/auth/login", json={"email": email, "password": password})
             for _ in range(30):
-                # If agent process exited after upgrade (e.g. on Windows), restart it
-                if agent_process and agent_process.poll() is not None:
-                    print("Agent process exited after update, restarting upgraded binary...")
-                    agent_env["RADEGAST_AGENT_AUTOUPDATE"] = "false"
-                    agent_process = subprocess.Popen(
-                        [str(agent_bin)],
-                        env=agent_env,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                    )
                 dev_resp = client.get(f"/devices/{device_id}")
                 if dev_resp.status_code == 200:
                     dev_data = dev_resp.json()
@@ -396,8 +477,16 @@ level: low
 
     finally:
         # Cleanup
-        stop_process(agent_process, "agent")
-        stop_process(server_process, "backend")
+        stop_process(agent_process, "agent", log_file=agent_log)
+        stop_process(server_process, "backend", log_file=backend_log)
+        try:
+            agent_log_f.close()
+        except Exception:
+            pass
+        try:
+            backend_log_f.close()
+        except Exception:
+            pass
         temp_dir.cleanup()
 
     print("Agent integration test completed successfully!")

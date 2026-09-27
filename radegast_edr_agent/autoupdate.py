@@ -78,6 +78,64 @@ def is_release_old_enough(
     return (now or datetime.now(timezone.utc)) - max(times) >= min_age
 
 
+def _infer_uv_tool_dirs() -> dict[str, str]:
+    """Infer UV tool environment directories from sys.executable if not explicitly configured.
+
+    When running as a uv tool, the executable is typically located at:
+      <tool_dir>/<package_name>/(Scripts|bin)/python(.exe)
+    This helper detects this layout and reconstructs:
+      - UV_TOOL_DIR: <tool_dir>
+      - UV_TOOL_BIN_DIR: <tool_dir>/../home/.local/bin or sys.argv[0] directory
+      - UV_CACHE_DIR: <tool_dir>/../.cache
+      - UV_PYTHON: Python interpreter from sys.base_prefix or alongside uv
+    """
+    inferred: dict[str, str] = {}
+    try:
+        exe = Path(sys.executable).resolve()
+        if len(exe.parents) >= 3 and exe.parent.name.lower() in ("scripts", "bin"):
+            tool_env_dir = exe.parent.parent
+            parent_dir = tool_env_dir.parent
+            if (
+                tool_env_dir.name == PACKAGE_NAME
+                or PACKAGE_NAME in tool_env_dir.name
+                or parent_dir.name.lower() in (".tools", "tools")
+            ):
+                tool_dir = parent_dir
+                inferred["UV_TOOL_DIR"] = str(tool_dir)
+
+                candidate_bin = tool_dir.parent / "home" / ".local" / "bin"
+                if candidate_bin.exists():
+                    inferred["UV_TOOL_BIN_DIR"] = str(candidate_bin)
+                elif len(sys.argv) > 0 and Path(sys.argv[0]).exists():
+                    inferred["UV_TOOL_BIN_DIR"] = str(Path(sys.argv[0]).resolve().parent)
+
+                candidate_cache = tool_dir.parent / ".cache"
+                if candidate_cache.exists():
+                    inferred["UV_CACHE_DIR"] = str(candidate_cache)
+
+                if hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix:
+                    base_exe_name = "python.exe" if sys.platform == "win32" else "python3"
+                    candidate_py = Path(sys.base_prefix) / (
+                        base_exe_name if sys.platform == "win32" else f"bin/{base_exe_name}"
+                    )
+                    if candidate_py.exists():
+                        inferred["UV_PYTHON"] = str(candidate_py)
+    except Exception as e:
+        logger.debug("Failed to infer UV tool directories from executable: %s", e)
+
+    return inferred
+
+
+def get_uv_tool_env() -> dict[str, str]:
+    """Prepare environment dictionary for uv commands, populating tool dirs if missing."""
+    env = os.environ.copy()
+    inferred = _infer_uv_tool_dirs()
+    for key, value in inferred.items():
+        if key not in env:
+            env[key] = value
+    return env
+
+
 def find_uv() -> str | None:
     """Locate the ``uv`` binary, even when ``PATH`` is minimal (e.g. systemd services).
 
@@ -95,17 +153,17 @@ def find_uv() -> str | None:
         return uv
 
     home = Path(os.path.expanduser("~"))
+    uv_name = "uv.exe" if sys.platform == "win32" else "uv"
 
     # 2. uv sets UV_TOOL_BIN_DIR to e.g. ~/.local/bin when running as a tool;
     #    the uv binary itself lives in that same directory.
-    tool_bin_dir = os.environ.get("UV_TOOL_BIN_DIR")
+    tool_bin_dir = os.environ.get("UV_TOOL_BIN_DIR") or _infer_uv_tool_dirs().get("UV_TOOL_BIN_DIR")
     if tool_bin_dir:
-        candidate = Path(tool_bin_dir) / "uv"
+        candidate = Path(tool_bin_dir) / uv_name
         if candidate.exists():
             return str(candidate)
 
     # 3. Hardcoded well-known locations (mirrors the install script's get_uv_path())
-    uv_name = "uv.exe" if sys.platform == "win32" else "uv"
     candidates = [
         home / ".local" / "bin" / uv_name,
         home / ".cargo" / "bin" / uv_name,
@@ -165,14 +223,16 @@ def _upgrade_via_pip(remote_version: str) -> bool:
     Python environment the agent is running in.
     """
     logger.info(
-        "uv not found — falling back to pip: %s -m pip install --upgrade %s==%s",
+        "Falling back to pip: %s -m pip install --upgrade %s==%s",
         sys.executable,
         PACKAGE_NAME,
         remote_version,
     )
+    env = get_uv_tool_env()
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "--upgrade", f"{PACKAGE_NAME}=={remote_version}"],
         check=True,
+        env=env,
     )
     logger.info("Successfully updated agent to version %s via pip", remote_version)
     return True
@@ -182,6 +242,7 @@ def _do_upgrade(remote_version: str) -> bool:
     """Perform the actual upgrade, choosing the right command based on install mode."""
     uv = find_uv()
     project_root = detect_project_root()
+    env = get_uv_tool_env()
 
     if uv is None:
         if project_root is not None:
@@ -206,10 +267,35 @@ def _do_upgrade(remote_version: str) -> bool:
             [uv, "add", requirement],
             check=True,
             cwd=str(project_root),
+            env=env,
         )
     else:
         logger.info("Running as uv tool. Upgrading via: %s tool install --force %s", uv, requirement)
-        subprocess.run([uv, "tool", "install", "--force", requirement], check=True)
+        try:
+            subprocess.run([uv, "tool", "install", "--force", requirement], check=True, env=env)
+        except subprocess.CalledProcessError as e:
+            logger.warning(
+                "uv tool install failed (%s). Attempting in-place upgrade via uv pip targeting current environment...",
+                e,
+            )
+            try:
+                logger.info(
+                    "Upgrading via: %s pip install --upgrade --python %s %s",
+                    uv,
+                    sys.executable,
+                    requirement,
+                )
+                subprocess.run(
+                    [uv, "pip", "install", "--upgrade", "--python", sys.executable, requirement],
+                    check=True,
+                    env=env,
+                )
+            except subprocess.CalledProcessError as pip_err:
+                logger.warning(
+                    "uv pip install failed (%s). Falling back to python -m pip install...",
+                    pip_err,
+                )
+                return _upgrade_via_pip(remote_version)
 
     logger.info("Successfully updated agent to version %s", remote_version)
     return True
