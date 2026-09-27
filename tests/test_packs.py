@@ -101,6 +101,7 @@ class TestPackSync:
         registry = json.loads(registry_path.read_text())
         assert registry == {"hashes.txt": ["pack1", "pack2"]}
         assert (rules_dir / "ioc" / "hashes.txt").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").read_text() == "abc123;test hash\ndef456;other hash\n"
 
         client.get_available_packs.return_value = [
             {
@@ -116,6 +117,7 @@ class TestPackSync:
         registry = json.loads(registry_path.read_text())
         assert registry == {"hashes.txt": ["pack2"]}
         assert (rules_dir / "ioc" / "hashes.txt").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").read_text() == "def456;other hash\n"
 
         client.get_available_packs.return_value = []
         syncer.sync()
@@ -213,6 +215,7 @@ class TestPackSync:
         assert (rules_dir / "yara" / "yara-one" / "malware_one.yar").exists()
         assert (rules_dir / "yara" / "yara-two" / "malware_two.yar").exists()
         assert (rules_dir / "ioc" / "hashes.txt").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").read_text() == "abc123;hash1\ndef456;hash2\n"
 
         registry_path = rules_dir / "ioc" / "ioc_packs.json"
         registry = json.loads(registry_path.read_text())
@@ -242,6 +245,7 @@ class TestPackSync:
         assert not (rules_dir / "yara" / "yara-one").exists()
         assert (rules_dir / "yara" / "yara-two" / "malware_two.yar").exists()
         assert (rules_dir / "ioc" / "hashes.txt").exists()
+        assert (rules_dir / "ioc" / "hashes.txt").read_text() == "abc123;hash1\n"
         assert json.loads(registry_path.read_text()) == {"hashes.txt": ["ioc-one"]}
         client.download_pack.assert_not_called()
 
@@ -410,3 +414,201 @@ class TestPlaceholdersAndIOC:
         assert not (rules_dir / "sigma" / "placeholder.yml").exists()
         assert not (rules_dir / "yara" / "placeholder.yar").exists()
         assert (rules_dir / "ioc" / "hashes.txt").exists()
+
+
+class TestPackUpdatesAndIoCMerging:
+    def test_merged_ioc_content_across_multiple_packs(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_id": "pack-a",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            },
+            {
+                "enabled_id": 2,
+                "pack_id": "pack-b",
+                "version": "1.0.0",
+                "pack_version_id": 20,
+                "autoupdate": True,
+            },
+        ]
+
+        client.download_pack.side_effect = [
+            make_zip({"ioc/ips.txt": "1.1.1.1\n1.1.1.2\n"}),
+            make_zip({"ioc/ips.txt": "1.1.1.2\n2.2.2.2\n"}),
+        ]
+
+        syncer.sync()
+
+        # Both packs should be in registry and merged deduplicated in rules/ioc/ips.txt
+        registry = json.loads((rules_dir / "ioc" / "ioc_packs.json").read_text())
+        assert registry == {"ips.txt": ["pack-a", "pack-b"]}
+        ips_content = (rules_dir / "ioc" / "ips.txt").read_text()
+        assert ips_content == "1.1.1.1\n1.1.1.2\n2.2.2.2\n"
+
+        # Remove pack-b
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_id": "pack-a",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            }
+        ]
+        syncer.sync()
+
+        # Only pack-a should remain in registry and only its IoCs in rules/ioc/ips.txt
+        registry = json.loads((rules_dir / "ioc" / "ioc_packs.json").read_text())
+        assert registry == {"ips.txt": ["pack-a"]}
+        ips_content = (rules_dir / "ioc" / "ips.txt").read_text()
+        assert ips_content == "1.1.1.1\n1.1.1.2\n"
+
+        # Remove pack-a as well
+        client.get_available_packs.return_value = []
+        syncer.sync()
+
+        registry = json.loads((rules_dir / "ioc" / "ioc_packs.json").read_text())
+        assert registry == {}
+        assert (rules_dir / "ioc" / "ips.txt").read_text() == ""
+
+    def test_update_pack_removes_old_sigma_and_yara_rules(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        # Version 1.0.0
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_id": "threat-pack",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            }
+        ]
+        client.download_pack.return_value = make_zip(
+            {
+                "sigma/rule_old.yml": "title: Old Rule\n",
+                "sigma/rule_kept.yml": "title: Kept Rule\n",
+                "yara/malware_old.yar": "rule OldMalware { condition: true }",
+            }
+        )
+        syncer.sync()
+
+        assert (rules_dir / "sigma" / "threat-pack" / "rule_old.yml").exists()
+        assert (rules_dir / "sigma" / "threat-pack" / "rule_kept.yml").exists()
+        assert (rules_dir / "yara" / "threat-pack" / "malware_old.yar").exists()
+
+        # Version 2.0.0 removes rule_old.yml and malware_old.yar, adds rule_new.yml and malware_new.yar
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_id": "threat-pack",
+                "version": "2.0.0",
+                "pack_version_id": 11,
+                "autoupdate": True,
+            }
+        ]
+        client.download_pack.return_value = make_zip(
+            {
+                "sigma/rule_kept.yml": "title: Kept Rule Updated\n",
+                "sigma/rule_new.yml": "title: New Rule\n",
+                "yara/malware_new.yar": "rule NewMalware { condition: true }",
+            }
+        )
+        syncer.sync()
+
+        # Verify old rules are deleted and only new/kept rules exist
+        assert not (rules_dir / "sigma" / "threat-pack" / "rule_old.yml").exists()
+        assert not (rules_dir / "yara" / "threat-pack" / "malware_old.yar").exists()
+        assert (rules_dir / "sigma" / "threat-pack" / "rule_kept.yml").exists()
+        assert (rules_dir / "sigma" / "threat-pack" / "rule_new.yml").exists()
+        assert (rules_dir / "yara" / "threat-pack" / "malware_new.yar").exists()
+
+    def test_modify_pack_content_removes_deleted_iocs(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        # Version 1.0.0 has two hashes
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_id": "ioc-pack",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            }
+        ]
+        client.download_pack.return_value = make_zip(
+            {
+                "ioc/hashes.txt": "hash1;first\nhash2;second\n",
+            }
+        )
+        syncer.sync()
+
+        assert (rules_dir / "ioc" / "hashes.txt").read_text() == "hash1;first\nhash2;second\n"
+
+        # Version 2.0.0 removes hash2 and adds hash3
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_id": "ioc-pack",
+                "version": "2.0.0",
+                "pack_version_id": 11,
+                "autoupdate": True,
+            }
+        ]
+        client.download_pack.return_value = make_zip(
+            {
+                "ioc/hashes.txt": "hash1;first\nhash3;third\n",
+            }
+        )
+        syncer.sync()
+
+        # hash2 should no longer be present
+        assert (rules_dir / "ioc" / "hashes.txt").read_text() == "hash1;first\nhash3;third\n"
+
+    def test_pack_yml_not_extracted_as_sigma_rule(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        client.get_available_packs.return_value = [
+            {
+                "enabled_id": 1,
+                "pack_id": "my-pack",
+                "version": "1.0.0",
+                "pack_version_id": 10,
+                "autoupdate": True,
+            }
+        ]
+        client.download_pack.return_value = make_zip(
+            {
+                "pack.yml": "name: My Pack\nversion: 1.0.0\n",
+                "sigma/test.yml": "title: Test Rule\n",
+            }
+        )
+        syncer.sync()
+
+        # pack.yml must NOT be extracted into rules/sigma/my-pack/pack.yml
+        assert not (rules_dir / "sigma" / "my-pack" / "pack.yml").exists()
+        assert (rules_dir / "sigma" / "my-pack" / "test.yml").exists()
+
+    def test_stale_ioc_registry_cleaned_on_sync(self, setup_syncer):
+        syncer, client, rules_dir, _ = setup_syncer
+
+        # Pre-seed stale registry entry and file
+        (rules_dir / "ioc" / "ioc_packs.json").write_text(json.dumps({"ips.txt": ["stale-pack"]}))
+        (rules_dir / "ioc" / "ips.txt").write_text("1.2.3.4\n")
+        (rules_dir / "sigma" / "stale-pack").mkdir(parents=True, exist_ok=True)
+        (rules_dir / "sigma" / "stale-pack" / "rule.yml").write_text("title: Stale\n")
+
+        # Sync with no packs enabled
+        client.get_available_packs.return_value = []
+        syncer.sync()
+
+        # Should self-heal: stale pack cleaned from registry, ioc file cleared, directories removed
+        registry = json.loads((rules_dir / "ioc" / "ioc_packs.json").read_text())
+        assert registry == {}
+        assert (rules_dir / "ioc" / "ips.txt").read_text() == ""
+        assert not (rules_dir / "sigma" / "stale-pack").exists()

@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -54,9 +55,6 @@ def stop_process(proc, name):
 
 
 def test_agent_integration():
-    test_dir = Path(__file__).parent.resolve()
-    agent_root = test_dir.parent
-
     # 1. Setup temporary workspace
     temp_dir = tempfile.TemporaryDirectory()
     temp_path = Path(temp_dir.name)
@@ -247,6 +245,31 @@ level: low
 
         # Start agent CLI process pointing to our backend
         print("Starting python agent...")
+
+        # Install agent as uv tool in temporary tool directory
+        tool_dir = temp_path / "uv_tools"
+        tool_bin_dir = temp_path / "uv_bin"
+        tool_cache_dir = temp_path / "uv_cache"
+        tool_env = os.environ.copy()
+        tool_env["UV_TOOL_DIR"] = str(tool_dir)
+        tool_env["UV_TOOL_BIN_DIR"] = str(tool_bin_dir)
+        tool_env["UV_CACHE_DIR"] = str(tool_cache_dir)
+
+        print("Installing radegast-edr-agent 0.8.0 as tool...")
+        run_command(["uv", "tool", "install", "--force", "radegast-edr-agent==0.8.0"], env=tool_env)
+        receipt_path = tool_dir / "radegast-edr-agent" / "uv-receipt.toml"
+        if receipt_path.exists():
+            receipt_content = receipt_path.read_text(encoding="utf-8")
+            receipt_path.write_text(receipt_content.replace('specifier = "==0.8.0"', ""), encoding="utf-8")
+        exe_name = "radegast-edr-agent.exe" if sys.platform.startswith("win32") else "radegast-edr-agent"
+        agent_bin = tool_bin_dir / exe_name
+
+        ver_res = run_command([str(agent_bin), "-V"])
+        print(f"Installed initial agent version: {ver_res.stdout.strip()}")
+        assert "0.8.0" in ver_res.stdout
+
+        # Start agent CLI process pointing to our backend
+        print("Starting python agent...")
         # Pre-create a valid encryption key file so agent doesn't generate a new one
         # (generating a new one would trigger a 90-second wait for backend to re-encrypt exclusions)
         encryption_key_path = agent_state_dir / "device_enc_key"
@@ -255,18 +278,27 @@ level: low
         private_key = SSAGE.generate_private_key()
         encryption_key_path.write_text(private_key)
 
+        rustinel_mock = shutil.which("true") or shutil.which("cmd") or sys.executable
         agent_env = os.environ.copy()
+        agent_env.pop("UV_PROJECT_ROOT", None)
+        agent_env["UV_TOOL_DIR"] = str(tool_dir)
+        agent_env["UV_TOOL_BIN_DIR"] = str(tool_bin_dir)
+        agent_env["UV_CACHE_DIR"] = str(tool_cache_dir)
         agent_env["RADEGAST_AGENT_BACKEND_URL"] = "http://127.0.0.1:8081/api/v1"
         agent_env["RADEGAST_AGENT_DEVICE_TOKEN"] = device_token
         agent_env["RADEGAST_AGENT_RULES_DIR"] = str(agent_rules_dir)
         agent_env["RADEGAST_AGENT_ALERTS_DIR"] = str(agent_alerts_dir)
         agent_env["RADEGAST_AGENT_STATE_DIR"] = str(agent_state_dir)
-        agent_env["RADEGAST_AGENT_RUSTINEL_BINARY"] = "true"  # Bypass binary path check since we mock
+        agent_env["RADEGAST_AGENT_RUSTINEL_BINARY"] = rustinel_mock
         agent_env["RADEGAST_AGENT_INIT_WAIT_SECONDS"] = "0"
+        agent_env["RADEGAST_AGENT_AUTOUPDATE"] = "true"
+        agent_env["RADEGAST_AGENT_AUTOUPDATE_INITIAL_DELAY"] = "4"
+        agent_env["RADEGAST_AGENT_AGENT_AUTOUPDATE_INITIAL_DELAY"] = "4"
+        agent_env["RADEGAST_AGENT_AUTOUPDATE_MIN_AGE_SECONDS"] = "0"
+        agent_env["PATH"] = f"{tool_bin_dir}{os.pathsep}{agent_env.get('PATH', '')}"
 
         agent_process = subprocess.Popen(
-            ["uv", "run", "python", "-m", "radegast_edr_agent.cli"],
-            cwd=agent_root,
+            [str(agent_bin)],
             env=agent_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -322,6 +354,46 @@ level: low
         if not alert_received:
             raise RuntimeError("Alert was not received by the backend.")
 
+        # Verify agent auto-update on disk
+        print("Waiting for agent to auto-update binary on disk...")
+        upgraded_on_disk = False
+        for _ in range(30):
+            ver_res = run_command([str(agent_bin), "-V"])
+            if "0.9.0" in ver_res.stdout:
+                print(f"Agent binary updated on disk to: {ver_res.stdout.strip()}")
+                upgraded_on_disk = True
+                break
+            time.sleep(1)
+        assert upgraded_on_disk, "Agent binary on disk was not updated to 0.9.0"
+
+        # Verify upgraded agent communicates with backend and updates device agent_version
+        print("Verifying upgraded agent reports version 0.9.0 to backend...")
+        upgraded_in_backend = False
+        dev_data = {}
+        with httpx.Client(base_url="http://127.0.0.1:8081/api/v1") as client:
+            client.post("/auth/login", json={"email": email, "password": password})
+            for _ in range(30):
+                # If agent process exited after upgrade (e.g. on Windows), restart it
+                if agent_process and agent_process.poll() is not None:
+                    print("Agent process exited after update, restarting upgraded binary...")
+                    agent_env["RADEGAST_AGENT_AUTOUPDATE"] = "false"
+                    agent_process = subprocess.Popen(
+                        [str(agent_bin)],
+                        env=agent_env,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                dev_resp = client.get(f"/devices/{device_id}")
+                if dev_resp.status_code == 200:
+                    dev_data = dev_resp.json()
+                    if "0.9.0" in dev_data.get("agent_version", ""):
+                        print(f"Backend device details confirmed updated: {dev_data}")
+                        upgraded_in_backend = True
+                        break
+                time.sleep(1)
+        assert upgraded_in_backend, f"Backend did not record updated agent version 0.9.0: {dev_data}"
+
     finally:
         # Cleanup
         stop_process(agent_process, "agent")
@@ -329,3 +401,7 @@ level: low
         temp_dir.cleanup()
 
     print("Agent integration test completed successfully!")
+
+
+if __name__ == "__main__":
+    test_agent_integration()

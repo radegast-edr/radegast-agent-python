@@ -14,6 +14,7 @@ from radegast_edr_agent.autoupdate import (
     is_release_old_enough,
     parse_version,
 )
+from radegast_edr_agent.config import AgentSettings, settings
 from radegast_edr_agent.crypto import generate_device_keypair, generate_encryption_keypair
 
 
@@ -175,6 +176,35 @@ class TestIsReleaseOldEnough:
         assert is_release_old_enough(_upload(10) + _upload(1)) is False
         assert is_release_old_enough(_upload(10) + _upload(5)) is True
 
+    def test_configurable_delay_in_hours(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "agent_autoupdate_delay_hours", 24)
+        assert is_release_old_enough(_upload(1.01)) is True
+        assert is_release_old_enough(_upload(0.99)) is False
+
+    def test_explicit_min_age_overrides_configured_delay(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "agent_autoupdate_delay_hours", 96)
+        assert is_release_old_enough(_upload(2 / 24), min_age=timedelta(hours=1)) is True
+        assert is_release_old_enough(_upload(0.5 / 24), min_age=timedelta(hours=1)) is False
+
+
+class TestAutoupdateConfig:
+    def test_default_delay_hours(self) -> None:
+        s = AgentSettings()
+        assert s.agent_autoupdate_delay_hours == 96
+        assert s.autoupdate_delay_hours == 96
+
+    def test_env_var_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RADEGAST_AGENT_AUTOUPDATE_DELAY_HOURS", "48")
+        s = AgentSettings()
+        assert s.agent_autoupdate_delay_hours == 48
+        assert s.autoupdate_delay_hours == 48
+
+    def test_property_getter_and_setter(self) -> None:
+        s = AgentSettings()
+        s.autoupdate_delay_hours = 12
+        assert s.agent_autoupdate_delay_hours == 12
+        assert s.autoupdate_delay_hours == 12
+
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")
 @patch("radegast_edr_agent.autoupdate.get_agent_version")
@@ -298,6 +328,29 @@ def test_check_and_perform_autoupdate_skips_too_new_release(mock_run, mock_get_v
 
     assert check_and_perform_autoupdate() is False
     mock_run.assert_not_called()
+
+
+@patch("radegast_edr_agent.autoupdate.find_uv", return_value="/home/user/.local/bin/uv")
+@patch("radegast_edr_agent.autoupdate.detect_project_root", return_value=None)
+@patch("radegast_edr_agent.autoupdate.httpx.get")
+@patch("radegast_edr_agent.autoupdate.get_agent_version")
+@patch("radegast_edr_agent.autoupdate.subprocess.run")
+def test_check_and_perform_autoupdate_respects_configured_delay_hours(
+    mock_run, mock_get_version, mock_get, mock_detect, mock_find_uv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_get_version.return_value = "0.1.0"
+    # Released 2 days ago (48 hours ago)
+    mock_get.return_value = _pypi_mock("0.2.0", days_ago=2)
+
+    # With default 96h (4 days), it should be skipped
+    monkeypatch.setattr(settings, "agent_autoupdate_delay_hours", 96)
+    assert check_and_perform_autoupdate() is False
+    mock_run.assert_not_called()
+
+    # With configured delay of 24h (1 day), it should proceed with update
+    monkeypatch.setattr(settings, "agent_autoupdate_delay_hours", 24)
+    assert check_and_perform_autoupdate() is True
+    mock_run.assert_called_once()
 
 
 @patch("radegast_edr_agent.autoupdate.httpx.get")

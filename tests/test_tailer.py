@@ -82,6 +82,15 @@ class TestAlertFileDetection:
         assert tailer.poll() == 0
         assert tailer._current_file == newer
 
+    def test_ignores_zip_and_tmp_files(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        (alerts_dir / "alerts.json").write_text("")
+        time.sleep(0.01)
+        (alerts_dir / "alerts.json.1.zip").write_text("fake zip")
+        (alerts_dir / "alerts.json.tmp").write_text("fake tmp")
+
+        assert tailer._find_alert_file() == alerts_dir / "alerts.json"
+
 
 class TestAlertProcessing:
     def test_processes_new_lines(self, setup_tailer):
@@ -234,6 +243,73 @@ class TestOffsetPersistence:
             state_dir=tailer._state_dir,
         )
         assert tailer2._offset == 0
+
+    def test_incomplete_line_is_not_dropped(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
+
+        alert_file = alerts_dir / "alerts.json"
+        # Write partial line without trailing newline
+        alert_file.write_text('{"event": "partial"')
+        assert tailer.poll() == 0
+        assert tailer._offset == 0
+        client.submit_log.assert_not_called()
+
+        # Complete the line with newline
+        with open(alert_file, "a") as f:
+            f.write(', "complete": true}\n')
+
+        assert tailer.poll() == 1
+        client.submit_log.assert_called_once()
+        assert tailer._offset > 0
+
+    def test_submission_failure_retries_without_dropping(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
+
+        alert_file = alerts_dir / "alerts.json"
+        alert_file.write_text('{"event": "alert1"}\n{"event": "alert2"}\n')
+
+        # First call fails on alert1
+        client.submit_log.side_effect = RuntimeError("Backend temporarily down")
+        assert tailer.poll() == 0
+        assert tailer._offset == 0
+
+        # Backend recovers, retry submits both alerts
+        client.submit_log.reset_mock()
+        client.submit_log.side_effect = None
+        assert tailer.poll() == 2
+        assert client.submit_log.call_count == 2
+        assert tailer._offset == alert_file.stat().st_size
+
+    def test_rotation_drains_remaining_lines_from_old_file(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        priv = SSAGE.generate_private_key()
+        s = SSAGE(priv)
+        client.get_encryption_keys.return_value = [{"user_id": 1, "public_key": s.public_key, "key_type": "regular"}]
+
+        file1 = alerts_dir / "alerts.json.2026-01-01"
+        file1.write_text('{"event": "alert1"}\n')
+        assert tailer.poll() == 1
+        assert client.submit_log.call_count == 1
+
+        # More events arrive in file1 before rotation
+        with open(file1, "a") as f:
+            f.write('{"event": "alert2"}\n')
+
+        # Now rotated: newer file created
+        time.sleep(0.01)
+        file2 = alerts_dir / "alerts.json.2026-01-02"
+        file2.write_text('{"event": "alert3"}\n')
+
+        # Polling should drain alert2 from file1 first, then alert3 from file2
+        client.submit_log.reset_mock()
+        assert tailer.poll() == 2
+        assert client.submit_log.call_count == 2
 
 
 class TestNoEncryptionKeys:
@@ -708,3 +784,13 @@ class TestLogRotation:
         rotate_rustinel_logs(tmp_path, max_size_mb=10, max_age_days=5)
 
         assert not zip_file.exists()
+
+    def test_rotate_postponed_when_alerts_unforwarded(self, setup_tailer):
+        tailer, client, alerts_dir = setup_tailer
+        client.submit_log.side_effect = RuntimeError("Backend unreachable")
+        alert_file = alerts_dir / "alerts.json"
+        alert_file.write_text("x" * (2 * 1024 * 1024) + "\n")
+
+        rotate_rustinel_logs(alerts_dir, max_size_mb=1, max_age_days=7, tailer=tailer)
+        assert alert_file.exists()
+        assert len(list(alerts_dir.glob("*.zip"))) == 0

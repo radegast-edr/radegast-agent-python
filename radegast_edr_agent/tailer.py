@@ -137,7 +137,9 @@ class AlertTailer:
             candidates.append(exact)
 
         pattern = f"{self._alerts_filename}.*"
-        candidates.extend(p for p in self._alerts_dir.glob(pattern) if p.is_file())
+        candidates.extend(
+            p for p in self._alerts_dir.glob(pattern) if p.is_file() and not p.name.endswith((".zip", ".tmp"))
+        )
 
         if not candidates:
             return None
@@ -178,17 +180,60 @@ class AlertTailer:
             self._exclusion_manager._last_fetched = 0
             self._exclusion_manager.refresh()
 
+    def _drain_file(self, file_path: Path) -> int:
+        """Drain any remaining complete lines from an alert file."""
+        if not file_path.exists() or not file_path.is_file():
+            return 0
+        processed = 0
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                f.seek(self._offset)
+                while True:
+                    line_start_pos = f.tell()
+                    line = f.readline()
+                    if not line:
+                        break
+                    if not line.endswith("\n"):
+                        break
+                    stripped_line = line.strip()
+                    if not stripped_line:
+                        self._offset = f.tell()
+                        continue
+                    try:
+                        if self._process_alert(stripped_line):
+                            processed += 1
+                        self._offset = f.tell()
+                    except Exception as e:
+                        logger.error("Failed to process alert line during drain: %s", e)
+                        self._offset = line_start_pos
+                        break
+        except Exception as e:
+            logger.error("Error reading file during drain %s: %s", file_path, e)
+        return processed
+
     def poll(self) -> int:
         """Poll for new alert lines and submit them. Returns number of lines processed."""
         alert_file = self._find_alert_file()
         if alert_file is None:
             return 0
 
+        self._refresh_keys()
+        if not self._encryption_keys:
+            return 0
+
         # Detect file rotation (inode change or new file)
+        drained = 0
         current_inode = os.stat(alert_file).st_ino
         if self._current_file != alert_file or self._current_inode != current_inode:
-            if self._current_file and self._current_file != alert_file:
-                logger.info("Alert file rotated: %s → %s", self._current_file, alert_file)
+            if self._current_file and self._current_file != alert_file and self._current_file.exists():
+                logger.info(
+                    "Alert file rotated: %s → %s. Draining remaining lines from old file.",
+                    self._current_file,
+                    alert_file,
+                )
+                drained = self._drain_file(self._current_file)
+            elif self._current_inode is not None and self._current_inode != current_inode:
+                logger.info("Alert file inode changed for %s", alert_file)
             self._current_file = alert_file
             self._current_inode = current_inode
             self._offset = 0
@@ -200,27 +245,37 @@ class AlertTailer:
             if file_size < self._offset:
                 logger.info("Alert file truncated, resetting offset")
                 self._offset = 0
-            return 0
+            return drained
 
-        self._refresh_keys()
-        if not self._encryption_keys:
-            return 0
-
-        processed = 0
+        processed = drained
         initial_offset = self._offset
-        with open(alert_file, "r") as f:
+        with open(alert_file, "r", encoding="utf-8", errors="replace") as f:
             f.seek(self._offset)
-            for line in f:
-                line = line.strip()
+            while True:
+                line_start_pos = f.tell()
+                line = f.readline()
                 if not line:
+                    break
+                # Only process complete lines ending with a newline.
+                # If a line does not end with '\n', Rustinel hasn't finished writing it.
+                if not line.endswith("\n"):
+                    f.seek(line_start_pos)
+                    break
+
+                stripped_line = line.strip()
+                if not stripped_line:
+                    self._offset = f.tell()
                     continue
+
                 try:
-                    if self._process_alert(line):
+                    if self._process_alert(stripped_line):
                         processed += 1
+                    self._offset = f.tell()
                 except Exception as e:
                     logger.error("Failed to process alert line: %s", e)
-
-            self._offset = f.tell()
+                    # Do not advance offset past the failed line so it can be retried on next poll!
+                    self._offset = line_start_pos
+                    break
 
         if self._offset != initial_offset:
             self._save_offset()
@@ -319,7 +374,12 @@ class AlertTailer:
         return True
 
 
-def rotate_rustinel_logs(log_dir: Path, max_size_mb: int, max_age_days: int) -> None:
+def rotate_rustinel_logs(
+    log_dir: Path,
+    max_size_mb: int,
+    max_age_days: int,
+    tailer: AlertTailer | None = None,
+) -> None:
     """Rotate active log/json files and clean up old zip files based on age."""
     if not log_dir.exists() or not log_dir.is_dir():
         return
@@ -335,6 +395,18 @@ def rotate_rustinel_logs(log_dir: Path, max_size_mb: int, max_age_days: int) -> 
 
         try:
             if file_path.stat().st_size > max_size_bytes:
+                # If this file is being actively tailed, ensure it is drained first
+                if tailer is not None and file_path.name == tailer._alerts_filename:
+                    tailer.poll()
+                    if tailer._offset < file_path.stat().st_size:
+                        logger.warning(
+                            "Postponing rotation of %s: tailer has unforwarded alerts (%d/%d bytes)",
+                            file_path.name,
+                            tailer._offset,
+                            file_path.stat().st_size,
+                        )
+                        continue
+
                 # Find next index
                 idx = 1
                 while True:

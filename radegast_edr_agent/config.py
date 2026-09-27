@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -22,8 +23,33 @@ class AgentSettings(BaseSettings):
     max_log_age_days: int = 720
 
     sync_interval: int = 300  # seconds between pack sync checks
-    agent_autoupdate_initial_delay: int = 300  # seconds until first autoupdate check
-    agent_autoupdate_interval: int = 86400  # seconds between subsequent autoupdate checks
+    agent_autoupdate_initial_delay: int = Field(
+        300,
+        validation_alias=AliasChoices(
+            "agent_autoupdate_initial_delay",
+            "autoupdate_initial_delay",
+            "radegast_agent_agent_autoupdate_initial_delay",
+            "radegast_agent_autoupdate_initial_delay",
+        ),
+    )
+    agent_autoupdate_interval: int = Field(
+        86400,
+        validation_alias=AliasChoices(
+            "agent_autoupdate_interval",
+            "autoupdate_interval",
+            "radegast_agent_agent_autoupdate_interval",
+            "radegast_agent_autoupdate_interval",
+        ),
+    )
+    agent_autoupdate_delay_hours: int = Field(
+        96,
+        validation_alias=AliasChoices(
+            "agent_autoupdate_delay_hours",
+            "autoupdate_delay_hours",
+            "radegast_agent_agent_autoupdate_delay_hours",
+            "radegast_agent_autoupdate_delay_hours",
+        ),
+    )
     init_wait_seconds: int = 90  # seconds to wait for backend to re-encrypt exclusions on new key registration
     signing_key_path: Path | None = None
     encryption_key_path: Path | None = None
@@ -42,6 +68,14 @@ class AgentSettings(BaseSettings):
             self.encryption_key_path = self.state_dir / "device_enc_key"
         if self.healthcheck_rule_dir is None:
             self.healthcheck_rule_dir = self.rules_dir / "sigma" / "_healthcheck"
+
+    @property
+    def autoupdate_delay_hours(self) -> int:
+        return self.agent_autoupdate_delay_hours
+
+    @autoupdate_delay_hours.setter
+    def autoupdate_delay_hours(self, value: int) -> None:
+        self.agent_autoupdate_delay_hours = value
 
 
 settings = AgentSettings()

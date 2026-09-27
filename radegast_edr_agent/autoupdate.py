@@ -13,13 +13,14 @@ from typing import Any
 
 import httpx
 
+from radegast_edr_agent.config import settings
 from radegast_edr_agent.version import get_agent_version
 
 logger = logging.getLogger(__name__)
 
 PYPI_JSON_URL = "https://pypi.org/pypi/radegast-edr-agent/json"
 PACKAGE_NAME = "radegast-edr-agent"
-MIN_RELEASE_AGE = timedelta(days=4)
+MIN_RELEASE_AGE = timedelta(hours=settings.agent_autoupdate_delay_hours)
 
 
 def get_version() -> str:
@@ -50,7 +51,7 @@ def is_newer_version(current: str, remote: str) -> bool:
 
 def is_release_old_enough(
     files: list[dict[str, Any]],
-    min_age: timedelta = MIN_RELEASE_AGE,
+    min_age: timedelta | None = None,
     now: datetime | None = None,
 ) -> bool:
     """Check that a release's most recent file was uploaded at least ``min_age`` ago.
@@ -58,6 +59,9 @@ def is_release_old_enough(
     ``files`` are the PyPI file entries of one release. Yanked files are ignored, and a
     release without a usable upload time is treated as too new.
     """
+    if min_age is None:
+        min_age = timedelta(hours=settings.agent_autoupdate_delay_hours)
+
     times = []
     for f in files:
         if f.get("yanked"):
@@ -226,7 +230,8 @@ def check_and_perform_autoupdate() -> bool:
     """
     logger.info("Checking for new agent version on PyPI...")
     try:
-        resp = httpx.get(PYPI_JSON_URL, timeout=15.0)
+        pypi_url = os.environ.get("RADEGAST_AGENT_PYPI_URL", PYPI_JSON_URL)
+        resp = httpx.get(pypi_url, timeout=15.0)
         resp.raise_for_status()
 
         data = resp.json()
@@ -239,11 +244,18 @@ def check_and_perform_autoupdate() -> bool:
             logger.info("Agent is up to date (version %s)", local_version)
             return False
 
-        if not is_release_old_enough(data.get("urls", [])):
+        min_age_env = os.environ.get("RADEGAST_AGENT_AUTOUPDATE_MIN_AGE_SECONDS")
+        min_age = (
+            timedelta(seconds=int(min_age_env))
+            if min_age_env is not None
+            else timedelta(hours=settings.agent_autoupdate_delay_hours)
+        )
+
+        if not is_release_old_enough(data.get("urls", []), min_age=min_age):
             logger.info(
                 "Version %s is newer but was released less than %s ago; skipping autoupdate for now",
                 remote_version,
-                MIN_RELEASE_AGE,
+                min_age,
             )
             return False
 

@@ -113,51 +113,55 @@ def ensure_encryption_key(client: BackendClient) -> bool:
 def _get_decrypted_allowlists(client: BackendClient) -> tuple[list[str], list[str]]:
     allowlist_paths: list[str] = []
     allowlist_images: list[str] = []
-    
+
     try:
         data = client.get_prevention_allowlist()
         entries = data.get("entries", [])
         group_keys = data.get("group_keys", {})
-        
+
         if not entries:
             return [], []
-            
+
         if not settings.encryption_key_path or not settings.encryption_key_path.exists():
             logger.warning("Agent encryption key file does not exist, cannot decrypt allowlists")
             return [], []
-            
+
         try:
             device_priv_key = load_encryption_key(settings.encryption_key_path)
         except Exception as e:
             logger.error("Failed to load device encryption key for allowlists: %s", e)
             return [], []
-            
+
         decrypted_group_keys: dict[str, str] = {}
-        
+
         for entry in entries:
             group_id = str(entry.get("device_group_id"))
-            
+
             if group_id not in decrypted_group_keys:
                 g_key_info = group_keys.get(group_id)
                 if not g_key_info:
-                    logger.warning("Group keys missing for group_id %s, skipping encrypted allowlist entry %s", group_id, entry.get("id"))
+                    logger.warning(
+                        "Group keys missing for group_id %s, skipping encrypted allowlist entry %s",
+                        group_id,
+                        entry.get("id"),
+                    )
                     continue
-                    
+
                 enc_group_priv_key = g_key_info.get("private_key")
                 if not enc_group_priv_key:
                     logger.warning("Encrypted group private key missing for group_id %s", group_id)
                     continue
-                    
+
                 try:
                     decrypted_group_keys[group_id] = decrypt_with_key(enc_group_priv_key, device_priv_key)
                 except Exception as err:
                     logger.error("Failed to decrypt group private key for group_id %s: %s", group_id, err)
                     continue
-                    
+
             group_priv_key = decrypted_group_keys.get(group_id)
             if not group_priv_key:
                 continue
-                
+
             try:
                 decrypted_value = decrypt_with_key(entry["value"], group_priv_key)
                 entry_type = entry.get("entry_type")
@@ -170,7 +174,7 @@ def _get_decrypted_allowlists(client: BackendClient) -> tuple[list[str], list[st
             except Exception as err:
                 logger.error("Failed to decrypt value for allowlist entry %s: %s", entry.get("id"), err)
                 continue
-                
+
         return allowlist_paths, allowlist_images
     except Exception as e:
         logger.warning("Failed to fetch or process prevention allowlist: %s", e)
@@ -370,6 +374,7 @@ def main(argv: list[str] | None = None) -> None:
                         settings.alerts_dir,
                         settings.max_log_size_mb,
                         settings.max_log_age_days,
+                        tailer=tailer,
                     )
                 except Exception as e:
                     logger.error("Log rotation error: %s", e)

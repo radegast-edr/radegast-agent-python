@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 def get_agent_version() -> str:
     """Get the agent version from package metadata or pyproject.toml."""
+    env_version = os.environ.get("RADEGAST_AGENT_VERSION")
+    if env_version:
+        return env_version
     try:
         return importlib.metadata.version("radegast-edr-agent")
     except Exception:
