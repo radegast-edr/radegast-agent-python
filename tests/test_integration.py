@@ -433,24 +433,37 @@ level: low
         if not alert_received:
             raise RuntimeError("Alert was not received by the backend.")
 
+        # Determine expected target version from PyPI (dynamic to avoid breaking on releases)
+        pypi_url = os.environ.get("RADEGAST_AGENT_PYPI_URL", "https://pypi.org/pypi/radegast-edr-agent/json")
+        try:
+            pypi_resp = httpx.get(pypi_url, timeout=15.0)
+            pypi_resp.raise_for_status()
+            target_version = str(pypi_resp.json()["info"]["version"])
+        except Exception as e:
+            print(f"Warning: Failed to fetch target version from PyPI ({e}), falling back to 0.9.1")
+            target_version = "0.9.1"
+
+        print(f"Expected target agent version after autoupdate: {target_version}")
+        assert target_version != "0.8.0", f"Target version {target_version} must be newer than initial 0.8.0"
+
         # Verify agent auto-update on disk
-        print("Waiting for agent to auto-update binary on disk...")
+        print(f"Waiting for agent to auto-update binary on disk to {target_version}...")
         upgraded_on_disk = False
         for _ in range(60):
             res = subprocess.run([str(agent_bin), "-V"], capture_output=True, text=True, check=False)
-            if res.returncode == 0 and "0.9.0" in res.stdout:
+            if res.returncode == 0 and target_version in res.stdout:
                 print(f"Agent binary updated on disk to: {res.stdout.strip()}")
                 upgraded_on_disk = True
                 break
             time.sleep(1)
-        assert upgraded_on_disk, "Agent binary on disk was not updated to 0.9.0"
+        assert upgraded_on_disk, f"Agent binary on disk was not updated to {target_version}"
 
         # Verify upgraded agent communicates with backend and updates device agent_version
         print("Stopping initial agent process...")
         stop_process(agent_process, "agent", log_file=agent_log)
         agent_process = None
 
-        print("Starting upgraded 0.9.0 agent binary...")
+        print(f"Starting upgraded {target_version} agent binary...")
         agent_env["RADEGAST_AGENT_AUTOUPDATE"] = "false"
         agent_process = subprocess.Popen(
             [str(agent_bin)],
@@ -459,7 +472,7 @@ level: low
             stderr=subprocess.STDOUT,
         )
 
-        print("Verifying upgraded agent reports version 0.9.0 to backend...")
+        print(f"Verifying upgraded agent reports version {target_version} to backend...")
         upgraded_in_backend = False
         dev_data = {}
         with httpx.Client(base_url="http://127.0.0.1:8081/api/v1") as client:
@@ -468,12 +481,12 @@ level: low
                 dev_resp = client.get(f"/devices/{device_id}")
                 if dev_resp.status_code == 200:
                     dev_data = dev_resp.json()
-                    if "0.9.0" in dev_data.get("agent_version", ""):
+                    if target_version in dev_data.get("agent_version", ""):
                         print(f"Backend device details confirmed updated: {dev_data}")
                         upgraded_in_backend = True
                         break
                 time.sleep(1)
-        assert upgraded_in_backend, f"Backend did not record updated agent version 0.9.0: {dev_data}"
+        assert upgraded_in_backend, f"Backend did not record updated agent version {target_version}: {dev_data}"
 
     finally:
         # Cleanup
