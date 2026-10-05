@@ -1,14 +1,13 @@
 # Radegast Agent
 
-Agent wrapper for the `rustinel` EDR binary. This project syncs detection packs from a backend, extracts rules into the local `rules/` tree, and forwards encrypted alert lines from `logs/` to the backend.
+Agent wrapper for the `rustinel` EDR binary. This project syncs detection packs from a backend, extracts rules into the local `rules/` tree, and forwards alerts lines from `logs/` to the backend as E2EE.
 
 ## Features
 
 - Syncs detection packs via backend API
 - Extracts `sigma`, `yara`, and merged `ioc` rules
-- Tracks IOC ownership across packs so removed pack IOC files are cleaned up safely
-- Tails `alerts.json` logs and forwards encrypted alerts to the backend
-- Optional local `rustinel` process startup controlled by configuration
+- Tails `alerts.json` from rustinel logs and forwards encrypted alerts to the backend
+- Configures rustinel Active Response from the Web UI settings
 
 ## Requirements
 
@@ -17,9 +16,13 @@ Agent wrapper for the `rustinel` EDR binary. This project syncs detection packs 
 
 ## Installation
 
-You can also install this project as a UV tool directly from GitHub:
+The best way to install agent is by creating a new device inside [Radegast EDR Console](https://docs.radegast.app/user-guides/devices#installing-the-agent-on-a-device).
+
+However, for local development or tryout, you can also install this project as a UV tool directly from GitHub:
 
 ```bash
+uv tool install radegast-edr-agent
+# or
 uv tool install git+https://github.com/radegast-edr/radegast-agent-python
 
 radegast-edr-agent --version
@@ -57,32 +60,6 @@ The agent uses environment variables prefixed with `RADEGAST_AGENT_`.
 | `RADEGAST_AGENT_HEALTHCHECK_TIMEOUT`      | `10.0`                                                          | Seconds to wait for rustinel alert detection before marking unhealthy              |
 | `RADEGAST_AGENT_HEALTHCHECK_RULE_DIR`     | `${RADEGAST_AGENT_RULES_DIR:-./rules}/sigma/_healthcheck`       | Directory where healthcheck probe Sigma rules are generated                        |
 
-### Notes
-
-- The agent does not launch `rustinel` — it must be started separately. The agent only tails alerts from the configured `alerts_dir`.
-- If `RADEGAST_AGENT_SIGNING_KEY_PATH` is unset, it defaults to `${RADEGAST_AGENT_STATE_DIR:-./.radegast-agent}/device_key`.
-- IOC files are merged into `rules/ioc/` and an ownership registry is kept in `rules/ioc/ioc_packs.json`.
-
-## Usage
-
-Run the agent via the console script:
-
-```bash
-radegast-edr-agent
-```
-
-Print the installed version:
-
-```bash
-radegast-edr-agent --version
-```
-
-Or with Python directly:
-
-```bash
-python -m radegast_edr_agent.cli
-```
-
 ## Project layout
 
 - `radegast_edr_agent/` — application package
@@ -102,9 +79,5 @@ python -m radegast_edr_agent.cli
 Run the test suite with:
 
 ```bash
-.venv/bin/python -m pytest
+uv run pytest
 ```
-
-## License
-
-This project does not include a license file by default. Add a `LICENSE` file if you want to define reuse terms.
