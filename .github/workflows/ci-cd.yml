@@ -38,7 +38,7 @@ jobs:
       - name: Checkout agent source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Run real-device integration with this agent checkout
-        uses: radegast-edr/radegast-console-backend/.github/actions/rustinel-integration@main
+        uses: radegast-edr/radegast-console-backend/.github/actions/rustinel-integration@73430868615e7c51c7b8ddb3b8edac837d8d601c
         with:
           agent-source: .
 
@@ -51,7 +51,7 @@ jobs:
       - name: Checkout agent source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Run real-device integration with this agent checkout
-        uses: radegast-edr/radegast-console-backend/.github/actions/rustinel-integration@main
+        uses: radegast-edr/radegast-console-backend/.github/actions/rustinel-integration@73430868615e7c51c7b8ddb3b8edac837d8d601c
         with:
           agent-source: .
 
@@ -64,7 +64,7 @@ jobs:
       - name: Checkout agent source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Run real-device integration with this agent checkout
-        uses: radegast-edr/radegast-console-backend/.github/actions/rustinel-integration@main
+        uses: radegast-edr/radegast-console-backend/.github/actions/rustinel-integration@73430868615e7c51c7b8ddb3b8edac837d8d601c
         with:
           agent-source: .
 
