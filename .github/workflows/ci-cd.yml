@@ -31,23 +31,16 @@ jobs:
 
   integration-linux:
     name: Run Linux integration test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      - name: Checkout agent source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Run real-device integration with this agent checkout
+        uses: radegast-edr/radegast-console-backend/.github/actions/rustinel-integration@main
         with:
-          enable-cache: true
-
-      - name: Install dependencies (dev)
-        run: uv sync --frozen --dev
-
-      - name: Run integration test
-        run: uv run pytest tests/test_integration.py -v --tb=short
+          agent-source: .
 
   integration-windows:
     name: Run Windows integration test
@@ -55,19 +48,12 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      - name: Checkout agent source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Run real-device integration with this agent checkout
+        uses: radegast-edr/radegast-console-backend/.github/actions/rustinel-integration@main
         with:
-          enable-cache: true
-
-      - name: Install dependencies (dev)
-        run: uv sync --frozen --dev
-
-      - name: Run integration test
-        run: uv run pytest tests/test_integration.py -v --tb=short
+          agent-source: .
 
   integration-mac:
     name: Run macOS integration test
@@ -75,19 +61,12 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      - name: Checkout agent source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Run real-device integration with this agent checkout
+        uses: radegast-edr/radegast-console-backend/.github/actions/rustinel-integration@main
         with:
-          enable-cache: true
-
-      - name: Install dependencies (dev)
-        run: uv sync --frozen --dev
-
-      - name: Run integration test
-        run: uv run pytest tests/test_integration.py -v --tb=short
+          agent-source: .
 
   pypi-publish:
     name: Upload release to PyPI
