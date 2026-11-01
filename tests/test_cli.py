@@ -517,9 +517,9 @@ def test_main_prints_version(capsys) -> None:
 @patch("radegast_edr_agent.cli.AlertTailer")
 @patch("radegast_edr_agent.cli.check_and_perform_autoupdate")
 @patch("radegast_edr_agent.cli.time.time")
-@patch("radegast_edr_agent.cli.os.execvp")
+@patch("radegast_edr_agent.cli.restart_process")
 def test_main_loop_triggers_autoupdate(
-    mock_execvp,
+    mock_restart,
     mock_time,
     mock_check_update,
     mock_tailer,
@@ -540,13 +540,37 @@ def test_main_loop_triggers_autoupdate(
     mock_time.side_effect = [0.0, 0.0, 0.0, 95000.0, 95000.0] + [195000.0] * 10
     mock_check_update.return_value = True
 
-    mock_execvp.side_effect = SystemExit(0)
+    mock_restart.side_effect = SystemExit(cli.RESTART_EXIT_CODE)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exc_info:
         cli.main([])
 
+    assert exc_info.value.code == cli.RESTART_EXIT_CODE
     mock_check_update.assert_called_once()
-    mock_execvp.assert_called_once()
+    mock_restart.assert_called_once()
+
+
+@patch("radegast_edr_agent.cli.os.execvp")
+def test_restart_process_on_windows_exits_with_failure_code(mock_execvp, monkeypatch) -> None:
+    monkeypatch.setattr(cli.sys, "platform", "win32")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.restart_process()
+
+    assert exc_info.value.code == cli.RESTART_EXIT_CODE
+    assert cli.RESTART_EXIT_CODE != 0
+    mock_execvp.assert_not_called()
+
+
+@patch("radegast_edr_agent.cli.os.execvp")
+def test_restart_process_on_posix_replaces_process(mock_execvp, monkeypatch) -> None:
+    monkeypatch.setattr(cli.sys, "platform", "linux")
+    argv = ["/opt/radegast agent/radegast-edr-agent"]
+    monkeypatch.setattr(cli.sys, "argv", argv)
+
+    cli.restart_process()
+
+    mock_execvp.assert_called_once_with(argv[0], argv)
 
 
 @patch("radegast_edr_agent.cli.BackendClient")

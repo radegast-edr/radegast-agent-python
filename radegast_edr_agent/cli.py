@@ -35,6 +35,19 @@ from radegast_edr_agent.version import (
 logger = logging.getLogger("agent")
 
 POLL_INTERVAL = 2  # seconds between alert tail polls
+RESTART_EXIT_CODE = 75  # non-zero so the Windows service manager applies its restart action
+
+
+def restart_process() -> None:
+    """Restart the agent so that a freshly installed version is loaded.
+
+    On Windows ``os.exec*`` does not replace the process: it spawns a detached child without
+    quoting its arguments and exits the parent with code 0. The service wrapper then sees a clean
+    stop and nothing restarts the agent, so exit with a failure code and let the service restart it.
+    """
+    if sys.platform == "win32":
+        sys.exit(RESTART_EXIT_CODE)
+    os.execvp(sys.argv[0], sys.argv)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -415,7 +428,7 @@ def main(argv: list[str] | None = None) -> None:
                         if updated:
                             logger.info("Agent upgraded. Restarting process...")
                             client.close()
-                            os.execvp(sys.argv[0], sys.argv)
+                            restart_process()
                     except Exception as e:
                         logger.error("Autoupdate error: %s", e)
                     last_autoupdate = now
